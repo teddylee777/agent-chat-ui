@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { Loader2, Package, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useStreamContext } from "@/providers/Stream";
 import { MiddlewareRecommendation } from "@/lib/middleware-recommendation-interrupt";
 import { HITLRequest } from "@/components/thread/agent-inbox/types";
 import { Interrupt } from "@langchain/langgraph-sdk";
@@ -11,6 +10,7 @@ import { toast } from "sonner";
 
 interface MiddlewareRecommendationViewProps {
   interrupt: Interrupt<HITLRequest>;
+  onSubmit: (values: Record<string, unknown>, options?: { command?: { resume?: unknown } }) => void;
   onDecision?: (interruptId: string, payload: unknown) => void;
   decided?: unknown;
 }
@@ -55,10 +55,10 @@ function RecommendationItem({
 
 export function MiddlewareRecommendationView({
   interrupt,
+  onSubmit,
   onDecision,
   decided,
 }: MiddlewareRecommendationViewProps) {
-  const thread = useStreamContext();
   const [rejectMessage, setRejectMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -95,10 +95,9 @@ export function MiddlewareRecommendationView({
 
     // Single interrupt mode: submit immediately
     // Note: After successful submit, this component will unmount as interrupt is resolved
-    // Do NOT set isSubmitting(false) in finally - it causes state update on unmounted component
     setIsSubmitting(true);
     try {
-      thread.submit(
+      onSubmit(
         {},
         {
           command: {
@@ -147,7 +146,7 @@ export function MiddlewareRecommendationView({
     // Note: After successful submit, this component will unmount as interrupt is resolved
     setIsSubmitting(true);
     try {
-      thread.submit(
+      onSubmit(
         {},
         {
           command: {

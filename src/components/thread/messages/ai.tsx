@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { ToolCalls, ToolResult } from "./tool-calls";
 import { MessageContentComplex } from "@langchain/core/messages";
 import { Fragment } from "react/jsx-runtime";
-import { useMemo, memo } from "react";
+import { useMemo, memo, useRef } from "react";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import {
   isClarifyingQuestionInterrupt,
@@ -50,7 +50,8 @@ function CustomComponent({
       {customComponents.map((customComponent) => (
         <LoadExternalComponent
           key={customComponent.id}
-          stream={thread}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          stream={thread as any}
           message={customComponent}
           meta={{ ui: customComponent, artifact }}
         />
@@ -89,7 +90,25 @@ interface InterruptProps {
   hasNoAIOrToolMessages: boolean;
 }
 
-function Interrupt({
+// Custom comparator for memo - compare by interrupt ID, not reference
+function interruptPropsAreEqual(prev: InterruptProps, next: InterruptProps): boolean {
+  // Compare primitive props
+  if (prev.isLastMessage !== next.isLastMessage) return false;
+  if (prev.hasNoAIOrToolMessages !== next.hasNoAIOrToolMessages) return false;
+
+  // Compare interrupt by ID instead of reference
+  const getInterruptId = (interrupt: unknown): string | null => {
+    if (!interrupt) return null;
+    if (Array.isArray(interrupt)) {
+      return interrupt.map((i: unknown) => (i as { id?: string })?.id ?? '').join(',');
+    }
+    return (interrupt as { id?: string })?.id ?? null;
+  };
+
+  return getInterruptId(prev.interrupt) === getInterruptId(next.interrupt);
+}
+
+export const Interrupt = memo(function Interrupt({
   interrupt,
   isLastMessage,
   hasNoAIOrToolMessages,
@@ -97,36 +116,82 @@ function Interrupt({
   const thread = useStreamContext();
   const shouldRender = isLastMessage || hasNoAIOrToolMessages;
 
+  // Cache previous result to prevent unnecessary re-renders
+  const prevInterruptsRef = useRef<unknown[]>([]);
+  const prevInterruptIdRef = useRef<string | undefined>(undefined);
+
+  // Compute stable interrupt ID for useMemo dependency
+  // This prevents recalculation when interrupt reference changes but content is same
+  const interruptId = useMemo(() => {
+    if (!interrupt) return null;
+    if (Array.isArray(interrupt)) {
+      return interrupt.map((i: unknown) => (i as { id?: string })?.id ?? '').join(',');
+    }
+    return (interrupt as { id?: string })?.id ?? null;
+  }, [interrupt]);
+
   // Collect ALL interrupts from ALL tasks in history
   // SDK's thread.interrupt only returns the last task's last interrupt,
   // but parallel subgraph agents create multiple tasks with separate interrupts
   const allInterrupts = useMemo(() => {
+
     // Early exit: SDK says no interrupt → return empty (prevents stale UI after resume)
     if (!interrupt) {
-      return [];
+      if (prevInterruptsRef.current.length === 0) {
+        return prevInterruptsRef.current; // Return same reference if already empty
+      }
+      prevInterruptsRef.current = [];
+      prevInterruptIdRef.current = undefined;
+      return prevInterruptsRef.current;
     }
+
+    // Get current interrupt ID for comparison
+    const currentInterruptId = (interrupt as { id?: string })?.id;
 
     // If interrupt is already an array (from __interrupt__), use it directly
     if (Array.isArray(interrupt) && interrupt.length > 0) {
+      // Check if content changed by comparing IDs
+      const firstId = (interrupt[0] as { id?: string })?.id;
+      if (firstId === prevInterruptIdRef.current && prevInterruptsRef.current.length === interrupt.length) {
+        return prevInterruptsRef.current; // Return cached reference if same
+      }
+      prevInterruptsRef.current = interrupt;
+      prevInterruptIdRef.current = firstId;
       return interrupt;
     }
 
     // Try to collect from history (all tasks' interrupts)
-    if (thread.history?.length) {
-      const lastState = thread.history[thread.history.length - 1];
+    // Use stable reference check: only recalculate if history length changed
+    const historyLength = thread.history?.length ?? 0;
+    if (historyLength > 0) {
+      const lastState = thread.history![historyLength - 1];
       if (lastState?.tasks?.length) {
         const collectedInterrupts = lastState.tasks.flatMap(
           (task) => task.interrupts ?? []
         );
         if (collectedInterrupts.length > 0) {
+          // Check if content changed
+          const firstId = (collectedInterrupts[0] as { id?: string })?.id;
+          if (firstId === prevInterruptIdRef.current && prevInterruptsRef.current.length === collectedInterrupts.length) {
+            return prevInterruptsRef.current; // Return cached reference if same
+          }
+          prevInterruptsRef.current = collectedInterrupts;
+          prevInterruptIdRef.current = firstId;
           return collectedInterrupts;
         }
       }
     }
 
     // Fallback to single interrupt from SDK
-    return interrupt ? [interrupt] : [];
-  }, [thread.history, interrupt]);
+    if (currentInterruptId === prevInterruptIdRef.current && prevInterruptsRef.current.length === 1) {
+      return prevInterruptsRef.current; // Return cached reference if same
+    }
+    const result = [interrupt];
+    prevInterruptsRef.current = result;
+    prevInterruptIdRef.current = currentInterruptId;
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread.history?.length, interruptId]); // Use stable IDs instead of object references
 
   // Don't show if: no interrupts, loading, or shouldn't render
   if (allInterrupts.length === 0 || thread.isLoading || !shouldRender) return null;
@@ -141,6 +206,7 @@ function Interrupt({
         interrupts={interrupts}
         isLastMessage={isLastMessage}
         hasNoAIOrToolMessages={hasNoAIOrToolMessages}
+        onSubmit={thread.submit}
       />
     );
   }
@@ -152,7 +218,7 @@ function Interrupt({
   if (isClarifyingQuestionInterrupt(singleInterrupt)) {
     const clarifyingInterrupt = getClarifyingQuestionInterrupt(singleInterrupt);
     if (clarifyingInterrupt) {
-      return <ClarifyingQuestionView interrupt={clarifyingInterrupt} />;
+      return <ClarifyingQuestionView interrupt={clarifyingInterrupt} onSubmit={thread.submit} />;
     }
   }
 
@@ -160,7 +226,7 @@ function Interrupt({
   if (isMiddlewareRecommendationInterrupt(singleInterrupt)) {
     const middlewareInterrupt = getMiddlewareRecommendationInterrupt(singleInterrupt);
     if (middlewareInterrupt) {
-      return <MiddlewareRecommendationView interrupt={middlewareInterrupt} />;
+      return <MiddlewareRecommendationView interrupt={middlewareInterrupt} onSubmit={thread.submit} />;
     }
   }
 
@@ -168,7 +234,7 @@ function Interrupt({
   if (isToolRecommendationInterrupt(singleInterrupt)) {
     const toolInterrupt = getToolRecommendationInterrupt(singleInterrupt);
     if (toolInterrupt) {
-      return <ToolRecommendationView interrupt={toolInterrupt} />;
+      return <ToolRecommendationView interrupt={toolInterrupt} onSubmit={thread.submit} />;
     }
   }
 
@@ -184,7 +250,7 @@ function Interrupt({
   // Generic fallback
   const fallbackValue = (singleInterrupt as { value?: unknown })?.value ?? singleInterrupt;
   return <GenericInterruptView interrupt={fallbackValue as Record<string, unknown>} />;
-}
+}, interruptPropsAreEqual);
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
@@ -199,13 +265,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const contentString = getContentString(content);
 
   const thread = useStreamContext();
-  const isLastMessage =
-    thread.messages[thread.messages.length - 1].id === message?.id;
-  const hasNoAIOrToolMessages = !thread.messages.find(
-    (m) => m.type === "ai" || m.type === "tool",
-  );
   const meta = message ? thread.getMessagesMetadata(message) : undefined;
-  const threadInterrupt = thread.interrupt;
 
   const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
   const anthropicStreamedToolCalls = Array.isArray(content)
@@ -229,14 +289,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
         {isToolResult ? (
-          <>
-            <ToolResult message={message} />
-            <Interrupt
-              interrupt={threadInterrupt}
-              isLastMessage={isLastMessage}
-              hasNoAIOrToolMessages={hasNoAIOrToolMessages}
-            />
-          </>
+          <ToolResult message={message} />
         ) : (
           <>
             {contentString.length > 0 && (
@@ -261,11 +314,6 @@ export const AssistantMessage = memo(function AssistantMessage({
                 thread={thread}
               />
             )}
-            <Interrupt
-              interrupt={threadInterrupt}
-              isLastMessage={isLastMessage}
-              hasNoAIOrToolMessages={hasNoAIOrToolMessages}
-            />
             <div
               className={cn(
                 "mr-auto flex items-center gap-2 transition-opacity",
