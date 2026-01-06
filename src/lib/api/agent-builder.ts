@@ -5,6 +5,7 @@ import type {
   AgentSummary,
   AgentConfig,
   AgentConfigUpdate,
+  AgentCreateRequest,
   AgentPrompt,
   AgentsListResponse,
   ToolsListResponse,
@@ -35,9 +36,11 @@ import type {
   AgentToolConfigResponse,
   AgentMiddlewareConfigResponse,
   ConfigValidationResponse,
+  ModelConfigResponse,
+  ModelConfigUpdate,
 } from "@/lib/types/agent-builder";
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_AGENT_BUILDER_API_URL || "http://localhost:8000/api";
 
 // Helper for fetch with error handling
 async function fetchApi<T>(
@@ -46,6 +49,7 @@ async function fetchApi<T>(
 ): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
@@ -101,6 +105,15 @@ export async function deleteAgent(
 ): Promise<{ success: boolean; message: string }> {
   return fetchApi(`/agents/${agentId}`, {
     method: "DELETE",
+  });
+}
+
+export async function createAgent(
+  data: AgentCreateRequest
+): Promise<AgentConfig> {
+  return fetchApi<AgentConfig>("/agents", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 }
 
@@ -503,4 +516,24 @@ export async function validateAgentMiddlewareConfig(
       body: JSON.stringify({ config_override: configOverride }),
     }
   );
+}
+
+// ============================================
+// Model Config APIs
+// ============================================
+
+export async function getAgentModelConfig(
+  agentId: string
+): Promise<ModelConfigResponse> {
+  return fetchApi<ModelConfigResponse>(`/agents/${agentId}/model`);
+}
+
+export async function updateAgentModelConfig(
+  agentId: string,
+  update: ModelConfigUpdate
+): Promise<ModelConfigResponse> {
+  return fetchApi<ModelConfigResponse>(`/agents/${agentId}/model`, {
+    method: "PUT",
+    body: JSON.stringify(update),
+  });
 }

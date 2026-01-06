@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Pencil, Trash2, Loader2, X, Save } from "lucide-react";
+import { Pencil, Trash2, Loader2, X, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { ToolInfo, ToolUpdateRequest } from "@/lib/types/agent-builder";
+
+interface KeyValuePair {
+  key: string;
+  value: string;
+}
 
 interface ToolDetailProps {
   tool: ToolInfo | null;
@@ -40,7 +45,7 @@ export function ToolDetail({
   const [toolName, setToolName] = useState("");
   const [description, setDescription] = useState("");
   const [importPath, setImportPath] = useState("");
-  const [initParams, setInitParams] = useState("");
+  const [initParams, setInitParams] = useState<KeyValuePair[]>([]);
   const [requiredEnv, setRequiredEnv] = useState("");
   // MCP config
   const [serverCommand, setServerCommand] = useState("");
@@ -55,9 +60,16 @@ export function ToolDetail({
       setToolName(tool.tool_name);
       setDescription(tool.tool_description);
       setImportPath(tool.import_path || "");
-      setInitParams(
-        tool.init_params ? JSON.stringify(tool.init_params, null, 2) : "{}"
-      );
+      // Convert init_params object to key-value pairs array
+      if (tool.init_params && typeof tool.init_params === "object") {
+        const pairs = Object.entries(tool.init_params).map(([key, value]) => ({
+          key,
+          value: typeof value === "string" ? value : JSON.stringify(value),
+        }));
+        setInitParams(pairs);
+      } else {
+        setInitParams([]);
+      }
       setRequiredEnv(tool.required_env?.join("\n") || "");
       // MCP config
       if (tool.mcp_config) {
@@ -78,6 +90,21 @@ export function ToolDetail({
       setIsEditing(false);
     }
   }, [tool]);
+
+  // Key-value pair helpers
+  const addInitParam = () => {
+    setInitParams([...initParams, { key: "", value: "" }]);
+  };
+
+  const removeInitParam = (index: number) => {
+    setInitParams(initParams.filter((_, i) => i !== index));
+  };
+
+  const updateInitParam = (index: number, field: "key" | "value", value: string) => {
+    const updated = [...initParams];
+    updated[index][field] = value;
+    setInitParams(updated);
+  };
 
   const handleSave = async () => {
     if (!tool) return;
@@ -109,13 +136,20 @@ export function ToolDetail({
 
       if (tool.tool_type === "built-in" || tool.tool_type === "custom") {
         updateData.import_path = importPath;
-        try {
-          updateData.init_params = JSON.parse(initParams);
-        } catch {
-          alert("Invalid JSON for init_params");
-          setIsSaving(false);
-          return;
+        // Convert key-value pairs to object
+        const initParamsObj: Record<string, unknown> = {};
+        for (const pair of initParams) {
+          if (pair.key.trim()) {
+            // Try to parse value as JSON for numbers, booleans, arrays, objects
+            try {
+              initParamsObj[pair.key] = JSON.parse(pair.value);
+            } catch {
+              // If not valid JSON, use as string
+              initParamsObj[pair.key] = pair.value;
+            }
+          }
         }
+        updateData.init_params = initParamsObj;
       }
 
       if (
@@ -217,41 +251,39 @@ export function ToolDetail({
             <>
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={() => setIsEditing(false)}
                 disabled={isSaving}
+                title="Cancel"
               >
-                <X className="mr-1 size-4" />
-                Cancel
+                <X className="size-4" />
               </Button>
-              <Button size="sm" onClick={handleSave} disabled={isSaving}>
+              <Button size="icon" onClick={handleSave} disabled={isSaving} title="Save">
                 {isSaving ? (
-                  <Loader2 className="mr-1 size-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Save className="mr-1 size-4" />
+                  <Check className="size-4" />
                 )}
-                Save
               </Button>
             </>
           ) : (
             <>
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={() => setIsEditing(true)}
+                title="Edit"
               >
-                <Pencil className="mr-1 size-4" />
-                Edit
+                <Pencil className="size-4" />
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm" disabled={isDeleting}>
+                  <Button variant="destructive" size="icon" disabled={isDeleting} title="Delete">
                     {isDeleting ? (
-                      <Loader2 className="mr-1 size-4 animate-spin" />
+                      <Loader2 className="size-4 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-1 size-4" />
+                      <Trash2 className="size-4" />
                     )}
-                    Delete
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -318,15 +350,46 @@ export function ToolDetail({
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Init Params (JSON)
+                  Init Params
                 </label>
                 {isEditing ? (
-                  <Textarea
-                    value={initParams}
-                    onChange={(e) => setInitParams(e.target.value)}
-                    rows={5}
-                    className="font-mono text-sm"
-                  />
+                  <div className="space-y-2">
+                    {initParams.map((pair, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          placeholder="Key"
+                          value={pair.key}
+                          onChange={(e) => updateInitParam(index, "key", e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          placeholder="Value"
+                          value={pair.value}
+                          onChange={(e) => updateInitParam(index, "value", e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeInitParam(index)}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addInitParam}
+                    >
+                      <Plus className="mr-1 size-4" /> Add Parameter
+                    </Button>
+                    <p className="text-xs text-gray-500">
+                      Values are parsed as JSON (numbers, booleans, arrays) or kept as strings
+                    </p>
+                  </div>
                 ) : (
                   <pre className="overflow-auto rounded-md bg-gray-50 p-3 text-sm dark:bg-gray-800">
                     {JSON.stringify(tool.init_params, null, 2)}
@@ -366,7 +429,7 @@ export function ToolDetail({
                     onChange={(e) => setServerArgs(e.target.value)}
                     rows={4}
                     className="font-mono text-sm"
-                    placeholder="-y&#10;@anthropic/mcp-server-github"
+                    placeholder={`-y\n@anthropic/mcp-server-github`}
                   />
                 ) : (
                   <pre className="overflow-auto rounded-md bg-gray-50 p-3 text-sm dark:bg-gray-800">
@@ -445,7 +508,7 @@ export function ToolDetail({
                 value={requiredEnv}
                 onChange={(e) => setRequiredEnv(e.target.value)}
                 rows={3}
-                placeholder="TAVILY_API_KEY&#10;GITHUB_TOKEN"
+                placeholder={`TAVILY_API_KEY\nGITHUB_TOKEN`}
               />
             ) : (
               <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-800">

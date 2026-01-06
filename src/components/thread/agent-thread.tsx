@@ -20,6 +20,8 @@ import {
   Pencil,
   History,
   Clock,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSidebarState } from "@/hooks/useSidebarState";
@@ -27,8 +29,8 @@ import { useThreadSidebarState } from "@/hooks/useThreadSidebarState";
 import { useBackgroundRun } from "@/hooks/useBackgroundRun";
 import { useThreadBackgroundStatus } from "@/hooks/useThreadBackgroundStatus";
 import { MarkdownText } from "./markdown-text";
-import { getThreadHistory } from "@/lib/api/agent-builder";
 import { ThreadSidebar } from "./thread-sidebar";
+import { ToolsDropdown } from "@/components/agent-chat/tools-dropdown";
 import { getContentString } from "./utils";
 import { ToolCallDisplay, ToolResultDisplay, parseToolCalls, type ToolCall, type ToolResult } from "./tool-call-display";
 import { toast } from "sonner";
@@ -50,6 +52,7 @@ function AgentHumanMessage({ message }: { message: Message }) {
 }
 
 function AgentAssistantMessage({ message }: { message: Message }) {
+  const [copied, setCopied] = useState(false);
   const content = message?.content ?? [];
   const contentString = getContentString(content);
 
@@ -71,20 +74,53 @@ function AgentAssistantMessage({ message }: { message: Message }) {
   // Get tool results from message.tool_results (from tool_result events)
   const messageToolResults: ToolResult[] = (message as any).tool_results || [];
 
+  // tool_results가 있으면 해당 JSON을 cleanContent에서 제거 (history 로드 시 중복 방지)
+  let finalContent = cleanContent;
+  if (messageToolResults.length > 0) {
+    messageToolResults.forEach((result) => {
+      if (result.result) {
+        finalContent = finalContent.replace(result.result, "").trim();
+      }
+    });
+  }
+
   // Combine both sources (structured first, then parsed from content)
   const allToolCalls = [...structuredToolCalls, ...parsedToolCalls];
 
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(finalContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="mr-auto flex w-full items-start gap-2">
+    <div className="group mr-auto flex w-full flex-col gap-1">
       <div className="flex w-full flex-col gap-2">
         {allToolCalls.length > 0 && <ToolCallDisplay toolCalls={allToolCalls} />}
         {messageToolResults.length > 0 && <ToolResultDisplay results={messageToolResults} />}
-        {cleanContent.length > 0 && (
+        {finalContent.length > 0 && (
           <div className="py-1">
-            <MarkdownText>{cleanContent}</MarkdownText>
+            <MarkdownText>{finalContent}</MarkdownText>
           </div>
         )}
       </div>
+
+      {/* Copy button - 텍스트 아래 우측 정렬 */}
+      {finalContent.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleCopy}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+            title="Copy"
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-green-500" />
+            ) : (
+              <Copy className="h-4 w-4 text-gray-400" />
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -156,7 +192,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
   const isLoading = stream.isLoading;
 
   // Background status management
-  const { setStatus, getStatus, markViewed, updateStatus } = useThreadBackgroundStatus(agent.agent_id);
+  const { setStatus, getStatus, markViewed, updateStatus, clearStatus } = useThreadBackgroundStatus(agent.agent_id);
 
   // Background run polling
   const { startPolling, stopPolling, isPolling } = useBackgroundRun(
@@ -170,18 +206,12 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
 
           // Reload thread history to get the response
           try {
-            const history = await getThreadHistory(agent.agent_id, stream.threadId);
-            // Find AI messages from the response and add to stream
             await stream.loadThread(stream.threadId);
           } catch (error) {
             console.error("Failed to load thread history:", error);
           }
-
-          // Show toast notification
-          toast.success("Background run completed", {
-            description: "Your request has been processed.",
-            duration: 5000,
-          });
+          // No toast here - user can see the result directly in chat UI
+          // Toast is only shown by global BackgroundRunManager when user is on a different page
         }
         stream.setActiveBackgroundRun(null);
       },
@@ -189,12 +219,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
         // Update status to error
         if (stream.threadId) {
           updateStatus(stream.threadId, "error");
-
-          // Show error toast
-          toast.error("Background run failed", {
-            description: run.error || "An error occurred while processing your request.",
-            duration: 5000,
-          });
+          // No toast here - global BackgroundRunManager handles notifications
         }
         stream.setActiveBackgroundRun(null);
       },
@@ -278,6 +303,8 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
 
   // Track first token received
   const prevMessageLength = useRef(0);
+  // Track Ctrl+Enter for background run
+  const forceBackgroundRef = useRef(false);
   useEffect(() => {
     if (
       messages.length !== prevMessageLength.current &&
@@ -294,13 +321,17 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
     if (input.trim().length === 0 || isLoading || isPolling) return;
     setFirstTokenReceived(false);
 
+    // Ctrl+Enter로 전송 시 background run 강제
+    const shouldUseBackground = isBackgroundMode || forceBackgroundRef.current;
+    forceBackgroundRef.current = false; // reset
+
     const newHumanMessage: Message = {
       id: uuidv4(),
       type: "human",
       content: input,
     };
 
-    if (isBackgroundMode) {
+    if (shouldUseBackground) {
       // Background mode: use submitBackground
       const response = await stream.submitBackground({ messages: [newHumanMessage] });
 
@@ -312,6 +343,9 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
           status: "pending",
           viewed: false,
         });
+
+        // Agent 로고 배경색 업데이트를 위해 이벤트 dispatch
+        window.dispatchEvent(new CustomEvent("background-status-update"));
 
         // Trigger thread list refetch to show new thread immediately
         setThreadRefetchTrigger((prev) => prev + 1);
@@ -327,6 +361,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
       }
     } else {
       // Normal streaming mode
+      const isNewThread = !stream.threadId;
       stream.submit(
         { messages: [newHumanMessage] },
         {
@@ -336,6 +371,10 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
           }),
         }
       );
+      // Trigger thread list refetch for new threads (thread is now created via API first)
+      if (isNewThread) {
+        setThreadRefetchTrigger((prev) => prev + 1);
+      }
     }
 
     setInput("");
@@ -408,6 +447,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            <ToolsDropdown agentId={agent.agent_id} />
             <Link href={`/agent/${agent.agent_id}/edit`}>
               <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
                 <Pencil className="size-4" />
@@ -462,7 +502,14 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
 
               <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
-              <div className={cn("bg-muted relative z-10 mx-4 mb-4 w-full max-w-3xl rounded-2xl border border-solid shadow-xs transition-all lg:mx-auto", !chatStarted && "mb-[20vh]")}>
+              <div className="mx-4 w-full max-w-3xl lg:mx-auto">
+                {/* Model Label */}
+                <div className="flex justify-end pr-4">
+                  <span className="inline-block rounded-t border-x border-t border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                    {agent.model_name}
+                  </span>
+                </div>
+              <div className={cn("bg-muted relative z-10 w-full rounded-2xl border border-solid shadow-xs transition-all mb-4", !chatStarted && "mb-[20vh]")}>
                 <form
                   onSubmit={handleSubmit}
                   className="grid w-full grid-rows-[1fr_auto] gap-2"
@@ -471,15 +518,23 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (
+                      // Ctrl+Enter: background run
+                      if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        forceBackgroundRef.current = true;
+                        const form = (e.target as HTMLElement)?.closest("form");
+                        form?.requestSubmit();
+                      }
+                      // Enter (without modifiers): normal submit
+                      else if (
                         e.key === "Enter" &&
                         !e.shiftKey &&
                         !e.metaKey &&
+                        !e.ctrlKey &&
                         !e.nativeEvent.isComposing
                       ) {
                         e.preventDefault();
-                        const el = e.target as HTMLElement | undefined;
-                        const form = el?.closest("form");
+                        const form = (e.target as HTMLElement)?.closest("form");
                         form?.requestSubmit();
                       }
                     }}
@@ -492,6 +547,11 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                       <Button key="stop" onClick={() => {
                         stream.stop();
                         stopPolling();
+                        // Clear background status from localStorage if this is a background run
+                        if (stream.threadId && stream.activeBackgroundRun) {
+                          clearStatus(stream.threadId);
+                          stream.setActiveBackgroundRun(null);
+                        }
                       }}>
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                         취소
@@ -524,6 +584,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                     )}
                   </div>
                 </form>
+              </div>
               </div>
             </div>
           }

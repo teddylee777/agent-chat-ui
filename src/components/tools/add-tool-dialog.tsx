@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, X, FileJson, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +23,11 @@ import {
 } from "@/components/ui/select";
 import type { ToolCreateRequest, ToolType } from "@/lib/types/agent-builder";
 
+interface KeyValuePair {
+  key: string;
+  value: string;
+}
+
 interface AddToolDialogProps {
   onAdd: (data: ToolCreateRequest) => Promise<void>;
 }
@@ -38,7 +43,7 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
 
   // Built-in / Custom fields
   const [importPath, setImportPath] = useState("");
-  const [initParams, setInitParams] = useState("{}");
+  const [initParams, setInitParams] = useState<KeyValuePair[]>([]);
 
   // MCP fields
   const [serverCommand, setServerCommand] = useState("npx");
@@ -50,18 +55,179 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
   // Required env
   const [requiredEnv, setRequiredEnv] = useState("");
 
+  // JSON import
+  const [showJsonImport, setShowJsonImport] = useState(false);
+  const [jsonImportValue, setJsonImportValue] = useState("");
+  const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+
+  // Validation
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
+
   const resetForm = () => {
     setToolName("");
     setToolDescription("");
     setToolType("built-in");
     setImportPath("");
-    setInitParams("{}");
+    setInitParams([]);
     setServerCommand("npx");
     setServerArgs("");
     setMcpUrl("");
     setMcpHeaders("{}");
     setMcpEnv("{}");
     setRequiredEnv("");
+    setValidationResult(null);
+  };
+
+  // Key-value pair helpers
+  const addInitParam = () => {
+    setInitParams([...initParams, { key: "", value: "" }]);
+  };
+
+  const removeInitParam = (index: number) => {
+    setInitParams(initParams.filter((_, i) => i !== index));
+  };
+
+  const updateInitParam = (index: number, field: "key" | "value", value: string) => {
+    const updated = [...initParams];
+    updated[index][field] = value;
+    setInitParams(updated);
+  };
+
+  const handleImportJson = () => {
+    setJsonImportError(null);
+    try {
+      const parsed = JSON.parse(jsonImportValue);
+
+      // Support multiple formats:
+      // 1. Full mcp.json: { "mcpServers": { "name": {...} } }
+      // 2. Single server: { "server-name": {...} }
+      // 3. Server config only: { "command": "npx", "args": [...] } or { "url": "https://..." }
+
+      let serverName: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let config: any;
+
+      if (parsed.mcpServers) {
+        const servers = Object.entries(parsed.mcpServers);
+        if (servers.length === 0) {
+          throw new Error("No servers found in mcpServers");
+        }
+        if (servers.length > 1) {
+          throw new Error("Multiple servers found. Please import only one server at a time.");
+        }
+        [serverName, config] = servers[0] as [string, unknown];
+      } else if (parsed.command || parsed.url) {
+        // Direct config format: { "command": "npx", ... } or { "url": "https://..." }
+        serverName = toolName || "imported_server";
+        config = parsed;
+      } else {
+        // Single server format: { "server-name": {...} }
+        const entries = Object.entries(parsed);
+        if (entries.length === 0) {
+          throw new Error("Invalid format: empty object");
+        }
+        if (entries.length > 1) {
+          throw new Error("Multiple servers found. Please import only one server at a time.");
+        }
+        [serverName, config] = entries[0] as [string, unknown];
+      }
+
+      // Convert server name to valid tool name (lowercase, alphanumeric, underscore)
+      const validToolName = serverName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "_")
+        .replace(/^[0-9]/, "_");
+      if (!toolName) setToolName(validToolName);
+
+      if (config.command) {
+        // STDIO type
+        setToolType("mcp-stdio");
+        setServerCommand(config.command);
+        setServerArgs((config.args || []).join("\n"));
+        if (config.env) setMcpEnv(JSON.stringify(config.env, null, 2));
+      } else if (config.url) {
+        // HTTP type
+        setToolType("mcp-http");
+        setMcpUrl(config.url);
+        if (config.headers) setMcpHeaders(JSON.stringify(config.headers, null, 2));
+      } else {
+        throw new Error("Invalid server config: must have either 'command' (stdio) or 'url' (http)");
+      }
+
+      setShowJsonImport(false);
+      setJsonImportValue("");
+    } catch (error) {
+      setJsonImportError(error instanceof Error ? error.message : "Invalid JSON");
+    }
+  };
+
+  const handleValidate = () => {
+    setIsValidating(true);
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Basic validation
+    if (!toolName.trim()) {
+      errors.push("Tool name is required");
+    } else if (!/^[a-z][a-z0-9_]*$/.test(toolName)) {
+      errors.push(
+        "Tool name must start with lowercase letter and contain only lowercase letters, numbers, and underscores"
+      );
+    }
+
+    if (!toolDescription.trim()) {
+      errors.push("Tool description is required");
+    }
+
+    // Type-specific validation
+    if (toolType === "built-in" || toolType === "custom") {
+      if (!importPath.trim()) {
+        errors.push("Import path is required for built-in/custom tools");
+      }
+    }
+
+    if (toolType === "mcp-stdio") {
+      if (!serverCommand.trim()) {
+        errors.push("Server command is required for MCP STDIO tools");
+      }
+      try {
+        JSON.parse(mcpEnv);
+      } catch {
+        errors.push("Invalid JSON for MCP environment variables");
+      }
+    }
+
+    if (toolType === "mcp-http") {
+      if (!mcpUrl.trim()) {
+        errors.push("URL is required for MCP HTTP tools");
+      }
+      try {
+        JSON.parse(mcpHeaders);
+      } catch {
+        errors.push("Invalid JSON for MCP headers");
+      }
+    }
+
+    // Warnings
+    if (initParams.length === 0 && (toolType === "built-in" || toolType === "custom")) {
+      warnings.push("No init params specified - tool will use default configuration");
+    }
+
+    if (!requiredEnv.trim()) {
+      warnings.push("No required environment variables specified");
+    }
+
+    setValidationResult({
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    });
+    setIsValidating(false);
   };
 
   const handleSubmit = async () => {
@@ -97,13 +263,20 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
           return;
         }
         data.import_path = importPath;
-        try {
-          data.init_params = JSON.parse(initParams);
-        } catch {
-          alert("Invalid JSON for init_params");
-          setIsSubmitting(false);
-          return;
+        // Convert key-value pairs to object
+        const initParamsObj: Record<string, unknown> = {};
+        for (const pair of initParams) {
+          if (pair.key.trim()) {
+            // Try to parse value as JSON for numbers, booleans, arrays, objects
+            try {
+              initParamsObj[pair.key] = JSON.parse(pair.value);
+            } catch {
+              // If not valid JSON, use as string
+              initParamsObj[pair.key] = pair.value;
+            }
+          }
         }
+        data.init_params = initParamsObj;
       }
 
       if (toolType === "mcp-stdio") {
@@ -166,6 +339,7 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm">
@@ -173,7 +347,7 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
           Add Tool
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1024px]">
         <DialogHeader>
           <DialogTitle>Add New Tool</DialogTitle>
           <DialogDescription>
@@ -203,20 +377,32 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
             <label className="text-sm font-medium">
               Tool Type <span className="text-red-500">*</span>
             </label>
-            <Select
-              value={toolType}
-              onValueChange={(v: string) => setToolType(v as ToolType)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="built-in">Built-in</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-                <SelectItem value="mcp-stdio">MCP STDIO</SelectItem>
-                <SelectItem value="mcp-http">MCP HTTP</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select
+                value={toolType}
+                onValueChange={(v: string) => setToolType(v as ToolType)}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="built-in">Built-in</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                  <SelectItem value="mcp-stdio">MCP STDIO</SelectItem>
+                  <SelectItem value="mcp-http">MCP HTTP</SelectItem>
+                </SelectContent>
+              </Select>
+              {(toolType === "mcp-stdio" || toolType === "mcp-http") && (
+                <Button
+                  type="button"
+                  onClick={() => setShowJsonImport(true)}
+                  className="h-10 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
+                >
+                  <FileJson className="mr-1 size-4" />
+                  Import JSON
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Tool Description */}
@@ -247,14 +433,44 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Init Params (JSON)</label>
-                <Textarea
-                  value={initParams}
-                  onChange={(e) => setInitParams(e.target.value)}
-                  rows={3}
-                  className="font-mono text-sm"
-                  placeholder='{"max_results": 5}'
-                />
+                <label className="text-sm font-medium">Init Params</label>
+                {initParams.map((pair, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder="Key"
+                      value={pair.key}
+                      onChange={(e) => updateInitParam(index, "key", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={pair.value}
+                      onChange={(e) => updateInitParam(index, "value", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeInitParam(index)}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    Values are parsed as JSON (numbers, booleans, arrays) or kept as strings
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addInitParam}
+                  >
+                    <Plus className="mr-1 size-4" /> Add Parameter
+                  </Button>
+                </div>
               </div>
             </>
           )}
@@ -282,7 +498,7 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
                   onChange={(e) => setServerArgs(e.target.value)}
                   rows={3}
                   className="font-mono text-sm"
-                  placeholder="-y&#10;@anthropic/mcp-server-github"
+                  placeholder={`-y\n@anthropic/mcp-server-github`}
                 />
               </div>
 
@@ -337,12 +553,54 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
               value={requiredEnv}
               onChange={(e) => setRequiredEnv(e.target.value)}
               rows={2}
-              placeholder="TAVILY_API_KEY&#10;GITHUB_TOKEN"
+              placeholder={`TAVILY_API_KEY\nGITHUB_TOKEN`}
             />
           </div>
+
+          {/* Validation Results */}
+          {validationResult && (
+            <div
+              className={`rounded-md border p-3 ${
+                validationResult.valid
+                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                  : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+              }`}
+            >
+              {validationResult.valid ? (
+                <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                  <CheckCircle2 className="size-4" />
+                  Validation passed!
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {validationResult.errors.map((err, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400"
+                    >
+                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                      {err}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {validationResult.warnings.length > 0 && (
+                <div className="mt-2 space-y-1 border-t border-yellow-200 pt-2 dark:border-yellow-800">
+                  {validationResult.warnings.map((warn, i) => (
+                    <p
+                      key={i}
+                      className="text-xs text-yellow-700 dark:text-yellow-400"
+                    >
+                      ⚠ {warn}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
@@ -350,12 +608,76 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
           >
             Cancel
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleValidate}
+            disabled={isSubmitting || isValidating}
+          >
+            {isValidating ? (
+              <Loader2 className="mr-1 size-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-1 size-4" />
+            )}
+            Validate
+          </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="mr-1 size-4 animate-spin" />}
             Create Tool
           </Button>
         </DialogFooter>
       </DialogContent>
+
     </Dialog>
+
+      {/* JSON Import Dialog */}
+      <Dialog open={showJsonImport} onOpenChange={setShowJsonImport}>
+        <DialogContent className="sm:max-w-[845px] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Import MCP Configuration</DialogTitle>
+            <DialogDescription>
+              Paste MCP JSON configuration to auto-fill the form. Supports
+              mcp.json format or single server config.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="rounded-md border">
+              <Textarea
+                value={jsonImportValue}
+                onChange={(e) => {
+                  setJsonImportValue(e.target.value);
+                  setJsonImportError(null);
+                }}
+                rows={20}
+                className="font-mono text-sm border-0 focus-visible:ring-0 shadow-none resize-none [field-sizing:fixed] break-all"
+                placeholder={`{
+  "mcpServers": {
+    "server-name": {
+      "command": "npx",
+      "args": ["-y", "@package/name"]
+    }
+  }
+}`}
+              />
+            </div>
+            {jsonImportError && (
+              <p className="text-sm text-red-500">{jsonImportError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowJsonImport(false);
+                setJsonImportValue("");
+                setJsonImportError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleImportJson}>Import</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

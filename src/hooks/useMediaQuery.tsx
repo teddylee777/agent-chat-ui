@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
 export function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
+  // undefined = not yet determined (SSR or initial render)
+  // This prevents hydration mismatch by ensuring server and client start with same value
+  const [matches, setMatches] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
     const media = window.matchMedia(query);

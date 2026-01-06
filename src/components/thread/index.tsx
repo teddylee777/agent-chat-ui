@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import Link from "next/link";
 import { ReactNode, useEffect, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -21,7 +22,6 @@ import {
   MessageSquarePlus,
   XIcon,
 } from "lucide-react";
-import { ModelSelector } from "./model-selector";
 import { useQueryState } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { toast } from "sonner";
@@ -374,11 +374,6 @@ export function ThreadContent() {
                     />
 
                     <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-                      {!chatStarted && (
-                        <div className="flex flex-wrap items-center gap-3">
-                          <ModelSelector />
-                        </div>
-                      )}
                       <div className={`flex justify-end gap-2 ${chatStarted ? 'w-full' : 'ml-auto'}`}>
                         {stream.isLoading ? (
                           <Button
@@ -401,12 +396,12 @@ export function ThreadContent() {
                     </div>
                     {!chatStarted && (
                       <div className="flex justify-center pb-3">
-                        <button
-                          type="button"
+                        <Link
+                          href="/agent/new"
                           className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-sm text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                         >
                           직접 수동으로 생성하기
-                        </button>
+                        </Link>
                       </div>
                     )}
                   </form>

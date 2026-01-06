@@ -35,7 +35,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       <div
         className="relative flex min-w-0 flex-1 flex-col overflow-hidden transition-[margin] duration-200 ease-out"
         style={{
-          marginLeft: sidebarOpen && isLargeScreen ? 280 : 0,
+          marginLeft: sidebarOpen && isLargeScreen === true ? 280 : 0,
         }}
       >
         {children}

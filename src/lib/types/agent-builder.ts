@@ -30,6 +30,16 @@ export interface AgentConfigUpdate {
   middleware_list?: string[];
 }
 
+// Agent Create Request
+export interface AgentCreateRequest {
+  agent_name: string;
+  agent_description?: string;
+  model_name?: string;
+  system_prompt?: string;
+  tool_list?: string[];
+  middleware_list?: string[];
+}
+
 // Agent Prompt
 export interface AgentPrompt {
   agent_id: string;
@@ -382,6 +392,7 @@ export interface ThreadBackgroundStatus {
   runId: string;
   status: RunStatus;
   viewed: boolean;
+  failCount?: number;  // 연속 폴링 실패 횟수
 }
 
 // ============================================
@@ -426,4 +437,32 @@ export interface ConfigValidationResponse {
   valid: boolean;
   errors: string[];
   warnings: string[];
+}
+
+// ============================================
+// Model Config Types
+// ============================================
+
+// Model Config Response
+export interface ModelConfigResponse {
+  agent_id: string;
+  model_name: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  api_key?: string;
+  base_url?: string;
+  source: "model.yaml" | "config.yaml";
+}
+
+// Model Config Update Request
+export interface ModelConfigUpdate {
+  model_name?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  api_key?: string;
+  base_url?: string;
 }

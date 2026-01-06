@@ -8,6 +8,7 @@ import {
   Toolbox,
   Middlewares,
   TestChat,
+  ModelSettings,
 } from "@/components/agent-edit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,11 @@ function EditPageContent() {
           {/* Instructions: flex-grow, 스크롤 가능 */}
           <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-gray-900">
             <InstructionsEditor />
+          </div>
+
+          {/* Model Settings: 고정 높이 */}
+          <div className="shrink-0 bg-white dark:bg-gray-900">
+            <ModelSettings />
           </div>
 
           {/* Toolbox + Middlewares: 고정 높이, 좌우 배치 */}

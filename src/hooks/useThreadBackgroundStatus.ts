@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { RunStatus, ThreadBackgroundStatus } from "@/lib/types/agent-builder";
 
 const STORAGE_KEY_PREFIX = "agent-chat:background-status:";
@@ -36,10 +36,15 @@ export function useThreadBackgroundStatus(
 ): UseThreadBackgroundStatusResult {
   const storageKey = `${STORAGE_KEY_PREFIX}${agentId}`;
 
-  // Initialize from localStorage synchronously to avoid flash of empty state
-  const [statusMap, setStatusMap] = useState<ThreadStatusMap>(() =>
-    loadFromStorage(storageKey)
-  );
+  // Initialize with empty state to avoid hydration mismatch
+  // (Server returns {}, Client reads localStorage which may have data)
+  const [statusMap, setStatusMap] = useState<ThreadStatusMap>({});
+
+  // Load from localStorage after hydration
+  useEffect(() => {
+    const fresh = loadFromStorage(storageKey);
+    setStatusMap(fresh);
+  }, [storageKey]);
 
   // Save to localStorage whenever statusMap changes
   const saveToStorage = useCallback(
@@ -64,13 +69,16 @@ export function useThreadBackgroundStatus(
 
   const setStatus = useCallback(
     (threadId: string, status: ThreadBackgroundStatus) => {
-      setStatusMap((prev) => {
-        const next = { ...prev, [threadId]: status };
+      setStatusMap(() => {
+        // Always read fresh from localStorage to avoid stale state
+        // (other hook instances may have deleted entries)
+        const fresh = loadFromStorage(storageKey);
+        const next = { ...fresh, [threadId]: status };
         saveToStorage(next);
         return next;
       });
     },
-    [saveToStorage]
+    [storageKey, saveToStorage]
   );
 
   const updateStatus = useCallback(
@@ -92,31 +100,42 @@ export function useThreadBackgroundStatus(
 
   const markViewed = useCallback(
     (threadId: string) => {
-      setStatusMap((prev) => {
-        const existing = prev[threadId];
-        if (!existing) return prev;
+      setStatusMap(() => {
+        // Always read fresh from localStorage to avoid stale state
+        // (other hook instances or BackgroundRunManager may have updated it)
+        const fresh = loadFromStorage(storageKey);
+        const existing = fresh[threadId];
+        if (!existing) return fresh;
 
         // If already viewed, no need to update
-        if (existing.viewed) return prev;
+        if (existing.viewed) return fresh;
 
         // If status is success or error, mark as viewed and remove
         if (existing.status === "success" || existing.status === "error") {
-          const next = { ...prev };
+          const next = { ...fresh };
           delete next[threadId];
           saveToStorage(next);
+          // Defer event to next tick to avoid setState during render
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("background-status-update"));
+          }, 0);
           return next;
         }
 
         // For other statuses (pending, running), just mark as viewed
         const next = {
-          ...prev,
+          ...fresh,
           [threadId]: { ...existing, viewed: true },
         };
         saveToStorage(next);
+        // Defer event to next tick to avoid setState during render
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("background-status-update"));
+        }, 0);
         return next;
       });
     },
-    [saveToStorage]
+    [storageKey, saveToStorage]
   );
 
   const clearStatus = useCallback(
@@ -125,6 +144,10 @@ export function useThreadBackgroundStatus(
         const next = { ...prev };
         delete next[threadId];
         saveToStorage(next);
+        // Defer event to next tick to avoid setState during render
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("background-status-update"));
+        }, 0);
         return next;
       });
     },
@@ -139,6 +162,17 @@ export function useThreadBackgroundStatus(
   const refreshFromStorage = useCallback(() => {
     const fresh = loadFromStorage(storageKey);
     setStatusMap(fresh);
+  }, [storageKey]);
+
+  // Listen for background-status-update events from BackgroundRunManager
+  useEffect(() => {
+    const handleUpdate = () => {
+      const fresh = loadFromStorage(storageKey);
+      setStatusMap(fresh);
+    };
+
+    window.addEventListener("background-status-update", handleUpdate);
+    return () => window.removeEventListener("background-status-update", handleUpdate);
   }, [storageKey]);
 
   return {

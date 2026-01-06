@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AgentSummary } from "@/lib/types/agent-builder";
 import { useRouter } from "next/navigation";
+import { useThreadBackgroundStatus } from "@/hooks/useThreadBackgroundStatus";
 
 interface AgentItemProps {
   agent: AgentSummary;
@@ -12,8 +14,58 @@ interface AgentItemProps {
   onClick: () => void;
 }
 
+type BackgroundState = "idle" | "active" | "completed";
+
 export function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
   const router = useRouter();
+  const { getAllStatuses, refreshFromStorage } = useThreadBackgroundStatus(agent.agent_id);
+
+  // Force refresh hook state when background status updates
+  useEffect(() => {
+    const handleBackgroundStatusUpdate = () => {
+      refreshFromStorage();
+    };
+
+    window.addEventListener("background-status-update", handleBackgroundStatusUpdate);
+    return () => window.removeEventListener("background-status-update", handleBackgroundStatusUpdate);
+  }, [refreshFromStorage]);
+
+  // Calculate overall background state for this agent
+  const getAgentBackgroundState = (): BackgroundState => {
+    const statuses = getAllStatuses();
+    const entries = Object.values(statuses);
+
+    if (entries.length === 0) return "idle";
+
+    // If any thread has pending/running status → "active"
+    const hasActive = entries.some(
+      (s) => s.status === "pending" || s.status === "running"
+    );
+    if (hasActive) return "active";
+
+    // If any thread has unviewed success → "completed"
+    const hasUnviewedSuccess = entries.some(
+      (s) => s.status === "success" && !s.viewed
+    );
+    if (hasUnviewedSuccess) return "completed";
+
+    return "idle";
+  };
+
+  const bgState = getAgentBackgroundState();
+
+  // Logo background color based on state
+  const logoBgClass: Record<BackgroundState, string> = {
+    idle: "bg-gray-200 dark:bg-gray-700",
+    active: "bg-yellow-400 dark:bg-yellow-500",
+    completed: "bg-green-400 dark:bg-green-500",
+  };
+
+  // Icon color for contrast
+  const iconClass =
+    bgState === "idle"
+      ? "text-gray-600 dark:text-gray-400"
+      : "text-white";
 
   const handleClick = () => {
     onClick();
@@ -29,8 +81,14 @@ export function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
       )}
       onClick={handleClick}
     >
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
-        <Bot className="size-4 text-gray-600 dark:text-gray-400" />
+      <div
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-full",
+          logoBgClass[bgState],
+          bgState === "active" && "animate-pulse"
+        )}
+      >
+        <Bot className={cn("size-4", iconClass)} />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-50">

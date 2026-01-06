@@ -3,6 +3,7 @@
 import React from "react";
 import { Toaster } from "sonner";
 import { AgentProvider } from "@/providers/Agent";
+import { BackgroundRunManager } from "@/providers/BackgroundRunManager";
 import { MainLayout } from "@/components/layout/main-layout";
 
 export default function MainGroupLayout({
@@ -13,9 +14,11 @@ export default function MainGroupLayout({
   return (
     <React.Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
       <Toaster />
-      <AgentProvider>
-        <MainLayout>{children}</MainLayout>
-      </AgentProvider>
+      <BackgroundRunManager>
+        <AgentProvider>
+          <MainLayout>{children}</MainLayout>
+        </AgentProvider>
+      </BackgroundRunManager>
     </React.Suspense>
   );
 }

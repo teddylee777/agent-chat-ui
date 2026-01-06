@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAgents } from "@/providers/Agent";
@@ -7,6 +8,18 @@ import { AgentItem } from "./agent-item";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AgentList() {
+  // Force re-render when background status updates
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const handleBackgroundStatusUpdate = () => {
+      forceUpdate((prev) => prev + 1);
+    };
+
+    window.addEventListener("background-status-update", handleBackgroundStatusUpdate);
+    return () => window.removeEventListener("background-status-update", handleBackgroundStatusUpdate);
+  }, []);
+
   const {
     agents,
     selectedAgent,
@@ -16,14 +29,28 @@ export function AgentList() {
     refetchAgents,
   } = useAgents();
 
+  const handleRefresh = () => {
+    refetchAgents();
+    window.dispatchEvent(new CustomEvent("background-status-update"));
+  };
+
   // Loading skeleton
   if (isLoading) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-        <div className="flex items-center px-4 py-2">
+        <div className="flex items-center justify-between px-4 py-2">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
             My Agents
           </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            disabled
+            title="Refresh"
+          >
+            <RefreshCw className="size-3.5 animate-spin" />
+          </Button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 space-y-2">
           {[1, 2, 3].map((i) => (
@@ -44,10 +71,19 @@ export function AgentList() {
   if (error) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-        <div className="flex items-center px-4 py-2">
+        <div className="flex items-center justify-between px-4 py-2">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
             My Agents
           </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            onClick={handleRefresh}
+            title="Refresh"
+          >
+            <RefreshCw className="size-3.5" />
+          </Button>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
           <AlertCircle className="size-8 text-red-500" />
@@ -70,10 +106,19 @@ export function AgentList() {
   if (agents.length === 0) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-        <div className="flex items-center px-4 py-2">
+        <div className="flex items-center justify-between px-4 py-2">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
             My Agents
           </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            onClick={handleRefresh}
+            title="Refresh"
+          >
+            <RefreshCw className="size-3.5" />
+          </Button>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -89,10 +134,19 @@ export function AgentList() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-      <div className="flex items-center px-4 py-2">
+      <div className="flex items-center justify-between px-4 py-2">
         <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
           My Agents
         </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          onClick={handleRefresh}
+          title="Refresh"
+        >
+          <RefreshCw className="size-3.5" />
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto px-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-gray-600">
         {agents.map((agent) => (

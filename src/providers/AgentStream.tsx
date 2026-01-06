@@ -103,7 +103,6 @@ export function AgentStreamProvider({
 
   const loadThread = useCallback(
     async (loadThreadId: string) => {
-      setIsLoading(true);
       setError(null);
 
       try {
@@ -112,8 +111,6 @@ export function AgentStreamProvider({
         setThreadId(history.thread_id);
       } catch (err) {
         setError(err);
-      } finally {
-        setIsLoading(false);
       }
     },
     [agentId]
@@ -202,10 +199,20 @@ export function AgentStreamProvider({
 
       const userContent = lastHumanMessage.content;
 
-      // Generate thread ID for new conversation
-      const currentThreadId = threadId || uuidv4();
-      if (!threadId) {
-        setThreadId(currentThreadId);
+      // Create thread via API first if this is a new conversation
+      // (mirrors submitBackground behavior for consistency)
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        try {
+          const newThread = await createThread(agentId, {
+            metadata: { first_message: userContent.slice(0, 100) },
+          });
+          currentThreadId = newThread.thread_id;
+          setThreadId(currentThreadId);
+        } catch (err) {
+          setError(err);
+          return;
+        }
       }
 
       // Apply optimistic update if provided
@@ -284,10 +291,15 @@ export function AgentStreamProvider({
             // Finalize any pending tool call before processing token
             finalizeCurrentToolCall();
 
-            // Extract text from content array
-            const tokenData = event.data as { content: Array<{ text: string }>; node: string };
+            // Extract text from content (string or array format)
+            const tokenData = event.data as { content: string | Array<{ text: string }>; node: string };
             const content = tokenData.content;
-            const text = Array.isArray(content) ? content[0]?.text || "" : "";
+            // Handle both string (backend sends) and array (legacy) formats
+            const text = typeof content === "string"
+              ? content
+              : Array.isArray(content)
+                ? content[0]?.text || ""
+                : "";
             if (text) {
               setMessages((prev) =>
                 prev.map((msg) =>

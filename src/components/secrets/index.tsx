@@ -263,21 +263,21 @@ export function SecretsScreen() {
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
                           onClick={() => handleEdit(secret.key)}
-                          className="gap-1.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          className="size-8 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          title="Edit"
                         >
-                          <Pencil className="size-3.5" />
-                          Edit
+                          <Pencil className="size-4" />
                         </Button>
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
                           onClick={() => handleDelete(secret.key)}
-                          className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
+                          className="size-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
+                          title="Delete"
                         >
-                          <Trash2 className="size-3.5" />
-                          Delete
+                          <Trash2 className="size-4" />
                         </Button>
                       </div>
                     </td>

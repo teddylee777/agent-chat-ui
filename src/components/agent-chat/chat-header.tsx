@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, Pencil, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ToolsDropdown } from "./tools-dropdown";
 import type { AgentSummary } from "@/lib/types/agent-builder";
 
 interface ChatHeaderProps {
@@ -49,12 +50,15 @@ export function ChatHeader({ agent, onBack }: ChatHeaderProps) {
         </div>
       </div>
 
-      <Link href={`/agent/${agent.agent_id}/edit`}>
-        <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
-          <Pencil className="size-4" />
-          Edit Agent
-        </Button>
-      </Link>
+      <div className="flex items-center gap-2">
+        <ToolsDropdown agentId={agent.agent_id} />
+        <Link href={`/agent/${agent.agent_id}/edit`}>
+          <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
+            <Pencil className="size-4" />
+            Edit Agent
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

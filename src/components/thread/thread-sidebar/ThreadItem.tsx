@@ -2,17 +2,9 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Trash2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import type { Thread, ThreadBackgroundStatus, RunStatus } from "@/lib/types/agent-builder";
 
 interface ThreadItemProps {
@@ -60,19 +52,25 @@ export function ThreadItem({
   backgroundStatus,
 }: ThreadItemProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmMode, setDeleteConfirmMode] = useState(false);
 
   const preview = thread.metadata?.first_message || "New conversation";
   const formattedDate = format(new Date(thread.updated_at), "yyyy-MM-dd HH:mm");
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setShowDeleteDialog(true);
+    setDeleteConfirmMode(true);
   };
 
-  const handleConfirmDelete = () => {
-    setShowDeleteDialog(false);
+  const handleConfirmDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onDelete(thread.thread_id);
+    setDeleteConfirmMode(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    setDeleteConfirmMode(false);
   };
 
   return (
@@ -81,7 +79,7 @@ export function ThreadItem({
       tabIndex={0}
       data-selected={isSelected}
       className={cn(
-        "group flex w-full cursor-pointer flex-col gap-1 rounded-lg px-3 py-2 text-left transition-colors",
+        "group relative flex w-full cursor-pointer flex-col gap-1 rounded-lg px-3 py-2 text-left transition-colors overflow-hidden",
         "hover:bg-gray-100 dark:hover:bg-gray-800",
         isSelected && "bg-gray-100 dark:bg-gray-800"
       )}
@@ -93,59 +91,48 @@ export function ThreadItem({
         }
       }}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={handleMouseLeave}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {backgroundStatus &&
-            // pending/running: 항상 표시 (viewed 무관)
-            // success/error: viewed가 false일 때만 표시
-            (backgroundStatus.status === "pending" ||
-              backgroundStatus.status === "running" ||
-              !backgroundStatus.viewed) && (
-              <StatusIndicator status={backgroundStatus.status} />
-            )}
-          <span className="line-clamp-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-            {truncateText(preview)}
-          </span>
-        </div>
-        {isHovered && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            onClick={handleDeleteClick}
-            aria-label="Delete thread"
-          >
-            <Trash2 className="size-3.5 text-gray-500" />
-          </Button>
-        )}
+      <div className="flex items-center gap-2 min-w-0 pr-8">
+        {backgroundStatus &&
+          // pending/running: 항상 표시 (viewed 무관)
+          // success/error: viewed가 false일 때만 표시
+          (backgroundStatus.status === "pending" ||
+            backgroundStatus.status === "running" ||
+            !backgroundStatus.viewed) && (
+            <StatusIndicator status={backgroundStatus.status} />
+          )}
+        <span className="line-clamp-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+          {truncateText(preview)}
+        </span>
       </div>
+      {/* 휴지통 버튼 - 항상 우측 중앙에 고정 */}
+      {isHovered && !deleteConfirmMode && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-1/2 -translate-y-1/2 size-6 shrink-0"
+          onClick={handleDeleteClick}
+          aria-label="Delete thread"
+        >
+          <Trash2 className="size-3.5 text-gray-500" />
+        </Button>
+      )}
       <div className="text-xs text-gray-500 dark:text-gray-400">
         <span>{formattedDate}</span>
       </div>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent onClick={(e) => e.stopPropagation()}>
-          <DialogHeader>
-            <DialogTitle>대화 삭제</DialogTitle>
-            <DialogDescription>
-              이 대화를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              취소
-            </Button>
-            <Button
-              onClick={handleConfirmDelete}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              삭제
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* 삭제 확인 슬라이딩 오버레이 */}
+      <div
+        className={cn(
+          "absolute inset-y-0 right-0 flex w-[15%] min-w-[40px] items-center justify-center bg-red-500 transition-transform duration-200 ease-out rounded-r-lg cursor-pointer",
+          deleteConfirmMode ? "translate-x-0" : "translate-x-full"
+        )}
+        onClick={handleConfirmDelete}
+        aria-label="Confirm delete"
+      >
+        <Check className="size-4 text-white" />
+      </div>
     </div>
   );
 }
