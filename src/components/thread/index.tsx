@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
-import Link from "next/link";
-import { ReactNode, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { ReactNode, useEffect, useRef, useMemo, useState, FormEvent } from "react";
+import { createAgent } from "@/lib/api/agent-builder";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
-import { useState, FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Checkpoint, Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading, Interrupt } from "./messages/ai";
@@ -84,7 +84,9 @@ export function ThreadContent() {
   const [sidebarOpen, setSidebarOpen] = useSidebarState();
   const [input, setInput] = useState("");
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+  const router = useRouter();
 
   const stream = useStreamContext();
   const messages = stream.messages;
@@ -187,6 +189,20 @@ export function ThreadContent() {
       streamSubgraphs: true,
       streamResumable: true,
     });
+  };
+
+  const handleCreateAgent = async () => {
+    setIsCreatingAgent(true);
+    try {
+      const agent = await createAgent({
+        agent_name: "New Agent",
+        agent_description: "Describe your agent here",
+      });
+      router.push(`/agent/${agent.agent_id}/edit`);
+    } catch (error) {
+      toast.error("Failed to create agent");
+      setIsCreatingAgent(false);
+    }
   };
 
   const chatStarted = useMemo(
@@ -396,12 +412,21 @@ export function ThreadContent() {
                     </div>
                     {!chatStarted && (
                       <div className="flex justify-center pb-3">
-                        <Link
-                          href="/agent/new"
-                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-sm text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                        <button
+                          type="button"
+                          onClick={handleCreateAgent}
+                          disabled={isCreatingAgent}
+                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-sm text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:bg-gray-800"
                         >
-                          직접 수동으로 생성하기
-                        </Link>
+                          {isCreatingAgent ? (
+                            <>
+                              <LoaderCircle className="h-3 w-3 animate-spin" />
+                              생성 중...
+                            </>
+                          ) : (
+                            "직접 수동으로 생성하기"
+                          )}
+                        </button>
                       </div>
                     )}
                   </form>

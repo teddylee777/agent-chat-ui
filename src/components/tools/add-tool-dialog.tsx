@@ -562,12 +562,12 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
             <div
               className={`rounded-md border p-3 ${
                 validationResult.valid
-                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                  ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20"
                   : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
               }`}
             >
               {validationResult.valid ? (
-                <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-400">
                   <CheckCircle2 className="size-4" />
                   Validation passed!
                 </div>
@@ -585,11 +585,11 @@ export function AddToolDialog({ onAdd }: AddToolDialogProps) {
                 </div>
               )}
               {validationResult.warnings.length > 0 && (
-                <div className="mt-2 space-y-1 border-t border-yellow-200 pt-2 dark:border-yellow-800">
+                <div className="mt-2 space-y-1 border-t border-gray-200 pt-2 dark:border-gray-700">
                   {validationResult.warnings.map((warn, i) => (
                     <p
                       key={i}
-                      className="text-xs text-yellow-700 dark:text-yellow-400"
+                      className="text-xs text-gray-600 dark:text-gray-400"
                     >
                       ⚠ {warn}
                     </p>

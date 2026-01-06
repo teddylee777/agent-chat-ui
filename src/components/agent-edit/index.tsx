@@ -1,7 +1,6 @@
 "use client";
 
 export { EditHeader } from "./edit-header";
-export { CreateHeader } from "./create-header";
 export { InstructionsEditor } from "./instructions-editor";
 export { Toolbox } from "./toolbox";
 export { Middlewares } from "./middlewares";
