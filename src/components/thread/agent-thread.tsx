@@ -13,17 +13,22 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import {
   ArrowDown,
   ArrowUp,
-  ArrowLeft,
   LoaderCircle,
   PanelRightOpen,
   PanelRightClose,
-  MessageSquarePlus,
   Bot,
   Pencil,
+  History,
+  Clock,
 } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSidebarState } from "@/hooks/useSidebarState";
+import { useThreadSidebarState } from "@/hooks/useThreadSidebarState";
+import { useBackgroundRun } from "@/hooks/useBackgroundRun";
+import { useThreadBackgroundStatus } from "@/hooks/useThreadBackgroundStatus";
 import { MarkdownText } from "./markdown-text";
+import { getThreadHistory } from "@/lib/api/agent-builder";
+import { ThreadSidebar } from "./thread-sidebar";
 import { getContentString } from "./utils";
 import { ToolCallDisplay, ToolResultDisplay, parseToolCalls, type ToolCall, type ToolResult } from "./tool-call-display";
 import { toast } from "sonner";
@@ -139,13 +144,109 @@ interface AgentThreadContentProps {
 
 function AgentThreadContent({ agent }: AgentThreadContentProps) {
   const [sidebarOpen, setSidebarOpen] = useSidebarState();
+  const [threadSidebarOpen, setThreadSidebarOpen] = useThreadSidebarState();
   const [input, setInput] = useState("");
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+  const [isBackgroundMode, setIsBackgroundMode] = useState(false);
+  const [threadRefetchTrigger, setThreadRefetchTrigger] = useState(0);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useAgentStreamContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
+
+  // Background status management
+  const { setStatus, getStatus, markViewed, updateStatus } = useThreadBackgroundStatus(agent.agent_id);
+
+  // Background run polling
+  const { startPolling, stopPolling, isPolling } = useBackgroundRun(
+    agent.agent_id,
+    stream.threadId,
+    {
+      onComplete: async (run) => {
+        // Update status to success
+        if (stream.threadId) {
+          updateStatus(stream.threadId, "success");
+
+          // Reload thread history to get the response
+          try {
+            const history = await getThreadHistory(agent.agent_id, stream.threadId);
+            // Find AI messages from the response and add to stream
+            await stream.loadThread(stream.threadId);
+          } catch (error) {
+            console.error("Failed to load thread history:", error);
+          }
+
+          // Show toast notification
+          toast.success("Background run completed", {
+            description: "Your request has been processed.",
+            duration: 5000,
+          });
+        }
+        stream.setActiveBackgroundRun(null);
+      },
+      onError: (run) => {
+        // Update status to error
+        if (stream.threadId) {
+          updateStatus(stream.threadId, "error");
+
+          // Show error toast
+          toast.error("Background run failed", {
+            description: run.error || "An error occurred while processing your request.",
+            duration: 5000,
+          });
+        }
+        stream.setActiveBackgroundRun(null);
+      },
+    }
+  );
+
+  // Start polling when there's an active background run
+  useEffect(() => {
+    if (stream.activeBackgroundRun && stream.threadId === stream.activeBackgroundRun.threadId) {
+      startPolling(stream.activeBackgroundRun.runId);
+    }
+    return () => {
+      stopPolling();
+    };
+  }, [stream.activeBackgroundRun, stream.threadId, startPolling, stopPolling]);
+
+  // Check for pending background run when entering a thread
+  useEffect(() => {
+    if (stream.threadId) {
+      const status = getStatus(stream.threadId);
+      // Resume polling if status is pending or running (regardless of viewed flag)
+      // viewed flag is for UI indicator only, not for polling control
+      if (status && (status.status === "pending" || status.status === "running")) {
+        startPolling(status.runId);
+      }
+    }
+  }, [stream.threadId, getStatus, startPolling]);
+
+  // Auto-disable background mode when a conversation completes (for streaming mode)
+  // Use ref to track if a conversation was ever started, only then disable on completion
+  const wasInProgressRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || isPolling) {
+      // Conversation is in progress
+      wasInProgressRef.current = true;
+    } else if (wasInProgressRef.current) {
+      // Conversation just completed (transitioned from in-progress to idle)
+      wasInProgressRef.current = false;
+      setIsBackgroundMode(false);
+      // Refresh thread list to show new/updated thread
+      setThreadRefetchTrigger((prev) => prev + 1);
+    }
+  }, [isLoading, isPolling]);
+
+  const handleSelectThread = async (threadId: string) => {
+    await stream.loadThread(threadId);
+  };
+
+  const handleNewThread = () => {
+    stream.clearThread();
+  };
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -188,9 +289,9 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
     prevMessageLength.current = messages.length;
   }, [messages]);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (input.trim().length === 0 || isLoading) return;
+    if (input.trim().length === 0 || isLoading || isPolling) return;
     setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
@@ -199,15 +300,43 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
       content: input,
     };
 
-    stream.submit(
-      { messages: [newHumanMessage] },
-      {
-        optimisticValues: (prev) => ({
-          ...prev,
-          messages: [...(prev.messages ?? []), newHumanMessage],
-        }),
+    if (isBackgroundMode) {
+      // Background mode: use submitBackground
+      const response = await stream.submitBackground({ messages: [newHumanMessage] });
+
+      if (response) {
+        // Use response.thread_id instead of stream.threadId
+        // (stream.threadId may still be null due to async state update)
+        setStatus(response.thread_id, {
+          runId: response.run_id,
+          status: "pending",
+          viewed: false,
+        });
+
+        // Trigger thread list refetch to show new thread immediately
+        setThreadRefetchTrigger((prev) => prev + 1);
+
+        // Note: startPolling is handled by the effect that watches activeBackgroundRun
+        // It will start polling once stream.threadId updates
+
+        // Show toast
+        toast.info("Background run started", {
+          description: "Your request is being processed in the background.",
+          duration: 3000,
+        });
       }
-    );
+    } else {
+      // Normal streaming mode
+      stream.submit(
+        { messages: [newHumanMessage] },
+        {
+          optimisticValues: (prev) => ({
+            ...prev,
+            messages: [...(prev.messages ?? []), newHumanMessage],
+          }),
+        }
+      );
+    }
 
     setInput("");
   };
@@ -215,68 +344,78 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
   const chatStarted = useMemo(() => !!messages.length, [messages.length]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
-      {/* Header */}
-      <div className="relative z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            {(!sidebarOpen || !isLargeScreen) && (
+    <div className="relative flex h-full w-full overflow-hidden">
+      {/* Thread Sidebar */}
+      <ThreadSidebar
+        agentId={agent.agent_id}
+        isOpen={threadSidebarOpen}
+        onToggle={() => setThreadSidebarOpen((prev) => !prev)}
+        onNewThread={handleNewThread}
+        onSelectThread={handleSelectThread}
+        selectedThreadId={stream.threadId}
+        refetchTrigger={threadRefetchTrigger}
+      />
+
+      {/* Main Content */}
+      <div
+        className={cn(
+          "flex h-full w-full flex-col overflow-hidden",
+          threadSidebarOpen && "ml-[280px]"
+        )}
+      >
+        {/* Header */}
+        <div className="relative z-10 flex h-[65px] items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {/* Thread Sidebar Toggle */}
               <Button
                 className="hover:bg-gray-100 dark:hover:bg-gray-800"
                 variant="ghost"
                 size="icon"
-                onClick={() => setSidebarOpen((p) => !p)}
+                onClick={() => setThreadSidebarOpen((prev) => !prev)}
+                title={threadSidebarOpen ? "Hide threads" : "Show threads"}
               >
-                {sidebarOpen ? (
-                  <PanelRightOpen className="size-5" />
-                ) : (
-                  <PanelRightClose className="size-5" />
-                )}
+                <History className="size-5" />
               </Button>
-            )}
-            <Link href="/">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <ArrowLeft className="size-5" />
+              {(!sidebarOpen || !isLargeScreen) && (
+                <Button
+                  className="hover:bg-gray-100 dark:hover:bg-gray-800"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidebarOpen((p) => !p)}
+                >
+                  {sidebarOpen ? (
+                    <PanelRightOpen className="size-5" />
+                  ) : (
+                    <PanelRightClose className="size-5" />
+                  )}
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                <Bot className="size-5 text-gray-600 dark:text-gray-400" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-50">
+                  {agent.agent_name}
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {agent.agent_description}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link href={`/agent/${agent.agent_id}/edit`}>
+              <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
+                <Pencil className="size-4" />
+                Edit Agent
               </Button>
             </Link>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-              <Bot className="size-5 text-gray-600 dark:text-gray-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-50">
-                {agent.agent_name}
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {agent.agent_description}
-              </p>
-            </div>
-          </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => window.location.reload()}
-            title="New thread"
-            className="hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            <MessageSquarePlus className="size-5" />
-          </Button>
-          <Link href={`/agent/${agent.agent_id}/edit`}>
-            <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
-              <Pencil className="size-4" />
-              Edit Agent
-            </Button>
-          </Link>
-        </div>
-      </div>
 
       {/* Messages */}
       <StickToBottom className="relative flex-1 overflow-hidden">
@@ -302,7 +441,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                   />
                 )
               )}
-              {isLoading && !firstTokenReceived && <AgentAssistantMessageLoading />}
+              {(isLoading || isPolling) && !firstTokenReceived && <AgentAssistantMessageLoading />}
             </>
           }
           footer={
@@ -349,19 +488,39 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                   />
 
                   <div className="flex flex-wrap items-center justify-end gap-2 p-3">
-                    {stream.isLoading ? (
-                      <Button key="stop" onClick={() => stream.stop()}>
+                    {stream.isLoading || isPolling ? (
+                      <Button key="stop" onClick={() => {
+                        stream.stop();
+                        stopPolling();
+                      }}>
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                         취소
                       </Button>
                     ) : (
-                      <Button
-                        type="submit"
-                        className="rounded-full p-2 shadow-md transition-all"
-                        disabled={isLoading || !input.trim()}
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setIsBackgroundMode((prev) => !prev)}
+                          title={isBackgroundMode ? "Background mode (ON)" : "Background mode (OFF)"}
+                          className={cn(
+                            "rounded-full transition-all",
+                            isBackgroundMode
+                              ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500"
+                              : "border-gray-300 text-gray-500 hover:text-gray-700 hover:border-gray-400"
+                          )}
+                        >
+                          <Clock className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="submit"
+                          className="rounded-full p-2 shadow-md transition-all"
+                          disabled={isLoading || isPolling || !input.trim()}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </form>
@@ -370,6 +529,7 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
           }
         />
       </StickToBottom>
+      </div>
     </div>
   );
 }

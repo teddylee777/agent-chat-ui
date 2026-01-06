@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAgentEdit } from "@/providers/AgentEdit";
 import { CollapsibleSection } from "./collapsible-section";
+import { MiddlewareSettingsDialog } from "./middleware-settings-dialog";
 import { getMiddlewares, getAgentMiddlewares } from "@/lib/api/agent-builder";
 import type { MiddlewareSummary, AgentMiddlewareEntry } from "@/lib/types/agent-builder";
 import { toast } from "sonner";
@@ -170,14 +171,20 @@ export function Middlewares() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleRemoveMiddleware(middlewareName)}
-                  className="size-8 text-gray-400 hover:text-red-500"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <div className="flex gap-1">
+                  <MiddlewareSettingsDialog
+                    agentId={editedConfig.agent_id}
+                    middlewareName={middlewareName}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveMiddleware(middlewareName)}
+                    className="size-8 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </div>
             );
           })

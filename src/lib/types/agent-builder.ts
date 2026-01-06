@@ -268,3 +268,162 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
 }
+
+// ============================================
+// Thread Types
+// ============================================
+
+export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
+
+export interface ThreadMetadata {
+  first_message?: string;
+  title?: string;
+  [key: string]: unknown;
+}
+
+export interface Thread {
+  thread_id: string;
+  agent_id: string;
+  status: ThreadStatus;
+  created_at: string;
+  updated_at: string;
+  metadata: ThreadMetadata;
+  message_count: number;
+}
+
+export interface ThreadCreate {
+  thread_id?: string;
+  metadata?: ThreadMetadata;
+}
+
+export interface ThreadListResponse {
+  threads: Thread[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface ThreadPaginationParams {
+  limit?: number;
+  offset?: number;
+}
+
+export interface MessageItem {
+  id: string;
+  type: "human" | "ai" | "tool";
+  content: string | Array<{ type: string; text?: string }>;
+  tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  tool_results?: Array<{ id: string; result: string }>;
+}
+
+export interface ThreadHistory {
+  thread_id: string;
+  agent_id: string;
+  messages: MessageItem[];
+  total: number;
+}
+
+export interface ThreadState {
+  thread_id: string;
+  agent_id: string;
+  values: Record<string, unknown>;
+  next_nodes: string[];
+  checkpoint_id?: string;
+}
+
+export interface ThreadDeleteResponse {
+  success: boolean;
+  message: string;
+}
+
+// ============================================
+// Run Types (Background Run)
+// ============================================
+
+// Run Status (백엔드와 동일)
+export type RunStatus = "pending" | "running" | "success" | "error" | "cancelled";
+
+// Run 정보
+export interface Run {
+  run_id: string;
+  thread_id: string;
+  agent_id: string;
+  status: RunStatus;
+  input: { messages: Array<{ role: string; content: string }> };
+  output?: Record<string, unknown>;
+  error?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+// Background Run 생성 응답
+export interface BackgroundRunResponse {
+  run_id: string;
+  thread_id: string;
+  agent_id: string;
+  status: RunStatus;
+  created_at: string;
+  message: string;
+}
+
+// Run 생성 요청
+export interface RunCreate {
+  input: { messages: Array<{ role: string; content: string }> };
+}
+
+// Run 목록 응답
+export interface RunListResponse {
+  runs: Run[];
+  total: number;
+}
+
+// Thread Background Status (UI용)
+export interface ThreadBackgroundStatus {
+  runId: string;
+  status: RunStatus;
+  viewed: boolean;
+}
+
+// ============================================
+// Tool/Middleware Config Types
+// ============================================
+
+// Agent Tool Config Response
+export interface AgentToolConfigResponse {
+  agent_id: string;
+  tool_name: string;
+  base_config: Record<string, unknown>;
+  config_override: Record<string, unknown>;
+  merged_config: Record<string, unknown>;
+}
+
+// Agent Tool Config Update Request
+export interface AgentToolConfigUpdateRequest {
+  config_override: Record<string, unknown>;
+}
+
+// Agent Middleware Config Response
+export interface AgentMiddlewareConfigResponse {
+  agent_id: string;
+  middleware_name: string;
+  base_config: Record<string, unknown>;
+  config_override: Record<string, unknown>;
+  merged_config: Record<string, unknown>;
+}
+
+// Agent Middleware Config Update Request
+export interface AgentMiddlewareConfigUpdateRequest {
+  config_override: Record<string, unknown>;
+}
+
+// Config Validation Request
+export interface ConfigValidationRequest {
+  config_override: Record<string, unknown>;
+}
+
+// Config Validation Response
+export interface ConfigValidationResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}

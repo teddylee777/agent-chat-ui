@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAgentEdit } from "@/providers/AgentEdit";
 import { CollapsibleSection } from "./collapsible-section";
+import { ToolSettingsDialog } from "./tool-settings-dialog";
 import { getTools, getAgentTools } from "@/lib/api/agent-builder";
 import type { ToolSummary, AgentToolEntry } from "@/lib/types/agent-builder";
 import { toast } from "sonner";
@@ -163,14 +164,20 @@ export function Toolbox() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleRemoveTool(toolName)}
-                  className="size-8 text-gray-400 hover:text-red-500"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <div className="flex gap-1">
+                  <ToolSettingsDialog
+                    agentId={editedConfig.agent_id}
+                    toolName={toolName}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveTool(toolName)}
+                    className="size-8 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </div>
             );
           })

@@ -11,10 +11,17 @@ import React, {
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { Message } from "@langchain/langgraph-sdk";
-import { streamAgentChat } from "@/lib/api/agent-builder";
+import { streamAgentChat, getThreadHistory, createBackgroundRun, createThread } from "@/lib/api/agent-builder";
+import type { BackgroundRunResponse } from "@/lib/types/agent-builder";
 
 // Simplified state type matching StreamProvider
 export type AgentStateType = { messages: Message[] };
+
+// Background run info
+interface ActiveBackgroundRun {
+  runId: string;
+  threadId: string;
+}
 
 // Context type matching essential StreamProvider interface
 interface AgentStreamContextType {
@@ -31,9 +38,20 @@ interface AgentStreamContextType {
   ) => Promise<void>;
   stop: () => Promise<void>;
 
+  // Background run methods
+  submitBackground: (
+    values: { messages?: Message[] } | null | undefined
+  ) => Promise<BackgroundRunResponse | null>;
+  activeBackgroundRun: ActiveBackgroundRun | null;
+  setActiveBackgroundRun: (run: ActiveBackgroundRun | null) => void;
+
   // Agent-specific
   agentId: string;
   threadId: string | null;
+
+  // Thread management
+  loadThread: (threadId: string) => Promise<void>;
+  clearThread: () => void;
 
   // Stub methods for compatibility (features not supported by agent-builder)
   interrupt: undefined;
@@ -60,6 +78,7 @@ export function AgentStreamProvider({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [activeBackgroundRun, setActiveBackgroundRun] = useState<ActiveBackgroundRun | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -81,6 +100,92 @@ export function AgentStreamProvider({
     }
     setIsLoading(false);
   }, []);
+
+  const loadThread = useCallback(
+    async (loadThreadId: string) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const history = await getThreadHistory(agentId, loadThreadId);
+        setMessages(history.messages as Message[]);
+        setThreadId(history.thread_id);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [agentId]
+  );
+
+  const clearThread = useCallback(() => {
+    setMessages([]);
+    setThreadId(null);
+    setError(null);
+    setActiveBackgroundRun(null);
+  }, []);
+
+  const submitBackground = useCallback(
+    async (
+      values: { messages?: Message[] } | null | undefined
+    ): Promise<BackgroundRunResponse | null> => {
+      // Get the last human message from input
+      const inputMessages = values?.messages || [];
+      const lastHumanMessage = inputMessages.find((m) => m.type === "human");
+
+      if (!lastHumanMessage || typeof lastHumanMessage.content !== "string") {
+        return null;
+      }
+
+      const userContent = lastHumanMessage.content;
+
+      // Generate or use existing thread ID
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        // Create a new thread first
+        try {
+          const newThread = await createThread(agentId, {
+            metadata: { first_message: userContent.slice(0, 100) },
+          });
+          currentThreadId = newThread.thread_id;
+          setThreadId(currentThreadId);
+        } catch (err) {
+          setError(err);
+          return null;
+        }
+      }
+
+      // Add user message to UI immediately
+      const humanMessage: Message = {
+        id: lastHumanMessage.id || uuidv4(),
+        type: "human",
+        content: userContent,
+      };
+      setMessages((prev) => [...prev, humanMessage]);
+
+      // Create background run
+      try {
+        const response = await createBackgroundRun(agentId, currentThreadId, {
+          input: {
+            messages: [{ role: "user", content: userContent }],
+          },
+        });
+
+        // Set active background run
+        setActiveBackgroundRun({
+          runId: response.run_id,
+          threadId: currentThreadId,
+        });
+
+        return response;
+      } catch (err) {
+        setError(err);
+        return null;
+      }
+    },
+    [agentId, threadId]
+  );
 
   const submit = useCallback(
     async (
@@ -287,8 +392,13 @@ export function AgentStreamProvider({
       error,
       submit,
       stop,
+      submitBackground,
+      activeBackgroundRun,
+      setActiveBackgroundRun,
       agentId,
       threadId,
+      loadThread,
+      clearThread,
       // Stub values for features not supported by agent-builder
       interrupt: undefined,
       branch: "main",
@@ -296,7 +406,7 @@ export function AgentStreamProvider({
       history: [],
       getMessagesMetadata: () => undefined,
     }),
-    [messages, isLoading, error, submit, stop, agentId, threadId]
+    [messages, isLoading, error, submit, stop, submitBackground, activeBackgroundRun, agentId, threadId, loadThread, clearThread]
   );
 
   return (

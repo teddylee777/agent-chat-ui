@@ -22,6 +22,19 @@ import type {
   ToolDeleteResponse,
   ToolUsageInfo,
   ToolValidationResponse,
+  Thread,
+  ThreadCreate,
+  ThreadListResponse,
+  ThreadPaginationParams,
+  ThreadHistory,
+  ThreadDeleteResponse,
+  Run,
+  RunCreate,
+  RunListResponse,
+  BackgroundRunResponse,
+  AgentToolConfigResponse,
+  AgentMiddlewareConfigResponse,
+  ConfigValidationResponse,
 } from "@/lib/types/agent-builder";
 
 const API_BASE = "http://localhost:8000/api";
@@ -317,4 +330,177 @@ export async function deleteSecret(
 
 export async function checkHealth(): Promise<{ status: string; service: string }> {
   return fetchApi("/health");
+}
+
+// ============================================
+// Thread APIs
+// ============================================
+
+export async function getThreads(
+  agentId: string,
+  params: ThreadPaginationParams = { limit: 20, offset: 0 }
+): Promise<ThreadListResponse> {
+  const queryParams = new URLSearchParams({
+    limit: String(params.limit ?? 20),
+    offset: String(params.offset ?? 0),
+  });
+  return fetchApi<ThreadListResponse>(
+    `/agents/${agentId}/threads?${queryParams}`
+  );
+}
+
+export async function getThread(
+  agentId: string,
+  threadId: string
+): Promise<Thread> {
+  return fetchApi<Thread>(`/agents/${agentId}/threads/${threadId}`);
+}
+
+export async function createThread(
+  agentId: string,
+  data: ThreadCreate = {}
+): Promise<Thread> {
+  return fetchApi<Thread>(`/agents/${agentId}/threads`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteThread(
+  agentId: string,
+  threadId: string
+): Promise<ThreadDeleteResponse> {
+  return fetchApi<ThreadDeleteResponse>(
+    `/agents/${agentId}/threads/${threadId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function getThreadHistory(
+  agentId: string,
+  threadId: string
+): Promise<ThreadHistory> {
+  return fetchApi<ThreadHistory>(
+    `/agents/${agentId}/threads/${threadId}/history`
+  );
+}
+
+// ============================================
+// Run APIs (Background Run)
+// ============================================
+
+export async function createBackgroundRun(
+  agentId: string,
+  threadId: string,
+  data: RunCreate
+): Promise<BackgroundRunResponse> {
+  return fetchApi<BackgroundRunResponse>(
+    `/agents/${agentId}/threads/${threadId}/runs/background`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function getRun(
+  agentId: string,
+  threadId: string,
+  runId: string
+): Promise<Run> {
+  return fetchApi<Run>(
+    `/agents/${agentId}/threads/${threadId}/runs/${runId}`
+  );
+}
+
+export async function listRuns(
+  agentId: string,
+  threadId: string,
+  limit: number = 20
+): Promise<RunListResponse> {
+  return fetchApi<RunListResponse>(
+    `/agents/${agentId}/threads/${threadId}/runs?limit=${limit}`
+  );
+}
+
+// ============================================
+// Agent Tool Config APIs
+// ============================================
+
+export async function getAgentToolConfig(
+  agentId: string,
+  toolName: string
+): Promise<AgentToolConfigResponse> {
+  return fetchApi<AgentToolConfigResponse>(
+    `/agents/${agentId}/tools/${toolName}/config`
+  );
+}
+
+export async function updateAgentToolConfig(
+  agentId: string,
+  toolName: string,
+  configOverride: Record<string, unknown>
+): Promise<AgentToolConfigResponse> {
+  return fetchApi<AgentToolConfigResponse>(
+    `/agents/${agentId}/tools/${toolName}/config`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ config_override: configOverride }),
+    }
+  );
+}
+
+export async function validateAgentToolConfig(
+  agentId: string,
+  toolName: string,
+  configOverride: Record<string, unknown>
+): Promise<ConfigValidationResponse> {
+  return fetchApi<ConfigValidationResponse>(
+    `/agents/${agentId}/tools/${toolName}/config/validate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ config_override: configOverride }),
+    }
+  );
+}
+
+// ============================================
+// Agent Middleware Config APIs
+// ============================================
+
+export async function getAgentMiddlewareConfig(
+  agentId: string,
+  middlewareName: string
+): Promise<AgentMiddlewareConfigResponse> {
+  return fetchApi<AgentMiddlewareConfigResponse>(
+    `/agents/${agentId}/middlewares/${middlewareName}/config`
+  );
+}
+
+export async function updateAgentMiddlewareConfig(
+  agentId: string,
+  middlewareName: string,
+  configOverride: Record<string, unknown>
+): Promise<AgentMiddlewareConfigResponse> {
+  return fetchApi<AgentMiddlewareConfigResponse>(
+    `/agents/${agentId}/middlewares/${middlewareName}/config`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ config_override: configOverride }),
+    }
+  );
+}
+
+export async function validateAgentMiddlewareConfig(
+  agentId: string,
+  middlewareName: string,
+  configOverride: Record<string, unknown>
+): Promise<ConfigValidationResponse> {
+  return fetchApi<ConfigValidationResponse>(
+    `/agents/${agentId}/middlewares/${middlewareName}/config/validate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ config_override: configOverride }),
+    }
+  );
 }
