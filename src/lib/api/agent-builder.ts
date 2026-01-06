@@ -15,6 +15,13 @@ import type {
   AgentMiddlewaresResponse,
   SecretsListResponse,
   StreamEvent,
+  ToolCreateRequest,
+  ToolCreateResponse,
+  ToolUpdateRequest,
+  ToolUpdateResponse,
+  ToolDeleteResponse,
+  ToolUsageInfo,
+  ToolValidationResponse,
 } from "@/lib/types/agent-builder";
 
 const API_BASE = "http://localhost:8000/api";
@@ -203,6 +210,41 @@ export async function removeAgentTool(
 ): Promise<{ success: boolean; message: string }> {
   return fetchApi(`/agents/${agentId}/tools/${toolName}`, {
     method: "DELETE",
+  });
+}
+
+// Tool CRUD APIs
+export async function createTool(data: ToolCreateRequest): Promise<ToolCreateResponse> {
+  return fetchApi<ToolCreateResponse>("/tools", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTool(
+  toolName: string,
+  data: ToolUpdateRequest
+): Promise<ToolUpdateResponse> {
+  return fetchApi<ToolUpdateResponse>(`/tools/${toolName}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTool(toolName: string): Promise<ToolDeleteResponse> {
+  return fetchApi<ToolDeleteResponse>(`/tools/${toolName}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getToolUsage(toolName: string): Promise<ToolUsageInfo> {
+  return fetchApi<ToolUsageInfo>(`/tools/${toolName}/usage`);
+}
+
+export async function validateTool(data: ToolCreateRequest): Promise<ToolValidationResponse> {
+  return fetchApi<ToolValidationResponse>("/tools/validate", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 }
 

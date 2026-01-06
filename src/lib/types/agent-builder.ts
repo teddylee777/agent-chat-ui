@@ -198,6 +198,69 @@ export interface SuccessResponse {
   message: string;
 }
 
+// Tool CRUD Types
+export type ToolType = "built-in" | "custom" | "mcp-stdio" | "mcp-http";
+
+export interface McpConfigCreate {
+  server_command?: string;
+  server_args?: string[];
+  url?: string;
+  headers?: Record<string, string>;
+  transport: "stdio" | "http";
+  env?: Record<string, string>;
+}
+
+export interface ToolCreateRequest {
+  tool_name: string;
+  tool_description: string;
+  tool_type: ToolType;
+  import_path?: string;
+  init_params?: Record<string, unknown>;
+  mcp_config?: McpConfigCreate;
+  required_env?: string[];
+}
+
+export interface ToolUpdateRequest {
+  new_tool_name?: string;
+  tool_description?: string;
+  import_path?: string;
+  init_params?: Record<string, unknown>;
+  mcp_config?: McpConfigCreate;
+  required_env?: string[];
+}
+
+export interface ToolCreateResponse {
+  success: boolean;
+  tool_name: string;
+  tool_path: string;
+  message: string;
+}
+
+export interface ToolUpdateResponse {
+  success: boolean;
+  tool_name: string;
+  tool_path: string;
+  message: string;
+}
+
+export interface ToolDeleteResponse {
+  success: boolean;
+  tool_name: string;
+  message: string;
+}
+
+export interface ToolUsageInfo {
+  tool_name: string;
+  used_by_agents: string[];
+  is_in_use: boolean;
+}
+
+export interface ToolValidationResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
 // Chat Message for UI
 export interface ChatMessage {
   id: string;
