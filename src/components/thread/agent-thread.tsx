@@ -35,7 +35,7 @@ import { getContentString } from "./utils";
 import { ToolCallDisplay, ToolResultDisplay, parseToolCalls, type ToolCall, type ToolResult } from "./tool-call-display";
 import { toast } from "sonner";
 import type { Message } from "@langchain/langgraph-sdk";
-import type { AgentSummary } from "@/lib/types/agent-builder";
+import type { AgentSummary, ContentBlock } from "@/lib/types/agent-builder";
 
 // Simplified message components for agent-builder (no branching/regeneration)
 function AgentHumanMessage({ message }: { message: Message }) {
@@ -43,7 +43,7 @@ function AgentHumanMessage({ message }: { message: Message }) {
   return (
     <div className="ml-auto flex items-center gap-2">
       <div className="flex flex-col gap-2">
-        <p className="bg-muted ml-auto w-fit rounded-3xl px-4 py-2 text-right whitespace-pre-wrap">
+        <p className="bg-muted ml-auto w-fit max-w-full rounded-3xl px-4 py-2 text-left whitespace-pre-wrap break-all">
           {contentString}
         </p>
       </div>
@@ -55,6 +55,9 @@ function AgentAssistantMessage({ message }: { message: Message }) {
   const [copied, setCopied] = useState(false);
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+
+  // Get content_blocks for ordered rendering (new approach)
+  const contentBlocks: ContentBlock[] = (message as any).content_blocks || [];
 
   // Parse tool calls from content (XML patterns - legacy support)
   const { toolCalls: parsedToolCalls, cleanContent } = parseToolCalls(contentString);
@@ -93,20 +96,64 @@ function AgentAssistantMessage({ message }: { message: Message }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Render content blocks in order (new approach)
+  const renderContentBlocks = () => {
+    return contentBlocks.map((block, index) => {
+      switch (block.type) {
+        case "text":
+          return block.content ? (
+            <div key={`text-${index}`} className="py-1">
+              <MarkdownText>{block.content}</MarkdownText>
+            </div>
+          ) : null;
+        case "tool_call":
+          const toolCall: ToolCall = {
+            id: block.id,
+            name: block.name,
+            parameters: typeof block.args === "object" && block.args !== null
+              ? Object.fromEntries(
+                  Object.entries(block.args).map(([k, v]) => [k, String(v)])
+                )
+              : {},
+          };
+          return <ToolCallDisplay key={`tool-call-${index}`} toolCalls={[toolCall]} />;
+        case "tool_result":
+          const toolResult: ToolResult = {
+            id: `result-${index}`,
+            result: block.result,
+          };
+          return <ToolResultDisplay key={`tool-result-${index}`} results={[toolResult]} />;
+        default:
+          return null;
+      }
+    });
+  };
+
+  // Determine if we should use content_blocks or legacy rendering
+  const hasContentBlocks = contentBlocks.length > 0;
+
   return (
     <div className="group mr-auto flex w-full flex-col gap-1">
       <div className="flex w-full flex-col gap-2">
-        {allToolCalls.length > 0 && <ToolCallDisplay toolCalls={allToolCalls} />}
-        {messageToolResults.length > 0 && <ToolResultDisplay results={messageToolResults} />}
-        {finalContent.length > 0 && (
-          <div className="py-1">
-            <MarkdownText>{finalContent}</MarkdownText>
-          </div>
+        {hasContentBlocks ? (
+          // New: Render content blocks in order
+          renderContentBlocks()
+        ) : (
+          // Legacy fallback: Render all tool_calls, then all tool_results, then text
+          <>
+            {allToolCalls.length > 0 && <ToolCallDisplay toolCalls={allToolCalls} />}
+            {messageToolResults.length > 0 && <ToolResultDisplay results={messageToolResults} />}
+            {finalContent.length > 0 && (
+              <div className="py-1">
+                <MarkdownText>{finalContent}</MarkdownText>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Copy button - 텍스트 아래 우측 정렬 */}
-      {finalContent.length > 0 && (
+      {(hasContentBlocks ? contentString : finalContent).length > 0 && (
         <div className="flex justify-end">
           <button
             onClick={handleCopy}
@@ -431,15 +478,15 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
                 </Button>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
                 <Bot className="size-5 text-gray-600 dark:text-gray-400" />
               </div>
-              <div>
-                <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-50">
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold text-gray-900 dark:text-gray-50">
                   {agent.agent_name}
                 </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="truncate text-sm text-gray-500 dark:text-gray-400">
                   {agent.agent_description}
                 </p>
               </div>

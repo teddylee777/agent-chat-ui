@@ -416,7 +416,7 @@ export function ThreadContent() {
                           type="button"
                           onClick={handleCreateAgent}
                           disabled={isCreatingAgent}
-                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-sm text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:bg-gray-800"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
                         >
                           {isCreatingAgent ? (
                             <>

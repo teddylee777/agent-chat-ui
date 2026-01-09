@@ -196,7 +196,7 @@ const defaultComponents: any = {
   pre: ({ className, ...props }: { className?: string }) => (
     <pre
       className={cn(
-        "max-w-4xl overflow-x-auto rounded-lg bg-black text-white",
+        "max-w-full overflow-x-auto rounded-lg bg-black text-white p-4",
         className,
       )}
       {...props}
@@ -205,10 +205,12 @@ const defaultComponents: any = {
   code: ({
     className,
     children,
+    inline,
     ...props
   }: {
     className?: string;
     children: React.ReactNode;
+    inline?: boolean;
   }) => {
     const match = /language-(\w+)/.exec(className || "");
 
@@ -232,9 +234,22 @@ const defaultComponents: any = {
       );
     }
 
+    // Inline code: add background and text color
+    if (inline) {
+      return (
+        <code
+          className={cn("rounded font-semibold px-1.5 py-0.5 bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200", className)}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+
+    // Block code (inside pre): minimal styling, inherits from pre
     return (
       <code
-        className={cn("rounded font-semibold", className)}
+        className={cn("font-semibold", className)}
         {...props}
       >
         {children}

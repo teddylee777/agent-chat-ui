@@ -318,12 +318,38 @@ export interface ThreadPaginationParams {
   offset?: number;
 }
 
+// Content Block Types for ordered rendering
+export interface TextContentBlock {
+  type: "text";
+  content: string;
+}
+
+export interface ToolCallContentBlock {
+  type: "tool_call";
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface ToolResultContentBlock {
+  type: "tool_result";
+  toolCallId?: string;
+  result: string;
+}
+
+export type ContentBlock =
+  | TextContentBlock
+  | ToolCallContentBlock
+  | ToolResultContentBlock;
+
 export interface MessageItem {
   id: string;
   type: "human" | "ai" | "tool";
   content: string | Array<{ type: string; text?: string }>;
   tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
   tool_results?: Array<{ id: string; result: string }>;
+  // Ordered content blocks for correct rendering sequence
+  content_blocks?: ContentBlock[];
 }
 
 export interface ThreadHistory {

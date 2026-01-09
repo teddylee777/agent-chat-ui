@@ -27,7 +27,7 @@ function HumanMessage({ message }: { message: Message }) {
   return (
     <div className="ml-auto flex items-center gap-2">
       <div className="flex flex-col gap-2">
-        <p className="bg-muted ml-auto w-fit rounded-3xl px-4 py-2 text-right whitespace-pre-wrap">
+        <p className="bg-muted ml-auto w-fit max-w-full rounded-3xl px-4 py-2 text-left whitespace-pre-wrap break-all">
           {contentString}
         </p>
       </div>

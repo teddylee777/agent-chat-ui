@@ -12,7 +12,7 @@ import React, {
 import { v4 as uuidv4 } from "uuid";
 import type { Message } from "@langchain/langgraph-sdk";
 import { streamAgentChat, getThreadHistory, createBackgroundRun, createThread } from "@/lib/api/agent-builder";
-import type { BackgroundRunResponse } from "@/lib/types/agent-builder";
+import type { BackgroundRunResponse, ContentBlock } from "@/lib/types/agent-builder";
 
 // Simplified state type matching StreamProvider
 export type AgentStateType = { messages: Message[] };
@@ -231,12 +231,13 @@ export function AgentStreamProvider({
         setMessages((prev) => [...prev, humanMessage]);
       }
 
-      // Create AI message placeholder
+      // Create AI message placeholder with content_blocks for ordered rendering
       const aiMessageId = uuidv4();
-      const aiMessage: Message = {
+      const aiMessage: Message & { content_blocks: ContentBlock[] } = {
         id: aiMessageId,
         type: "ai",
         content: "",
+        content_blocks: [],
       };
       setMessages((prev) => [...prev, aiMessage]);
 
@@ -302,11 +303,30 @@ export function AgentStreamProvider({
                 : "";
             if (text) {
               setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === aiMessageId
-                    ? { ...msg, content: (msg.content as string) + text }
-                    : msg
-                )
+                prev.map((msg) => {
+                  if (msg.id === aiMessageId) {
+                    const blocks = (msg as any).content_blocks || [];
+                    const lastBlock = blocks[blocks.length - 1];
+
+                    // If last block is text, append to it; otherwise create new text block
+                    let newBlocks: ContentBlock[];
+                    if (lastBlock?.type === "text") {
+                      newBlocks = [
+                        ...blocks.slice(0, -1),
+                        { ...lastBlock, content: lastBlock.content + text },
+                      ];
+                    } else {
+                      newBlocks = [...blocks, { type: "text" as const, content: text }];
+                    }
+
+                    return {
+                      ...msg,
+                      content: (msg.content as string) + text,
+                      content_blocks: newBlocks,
+                    };
+                  }
+                  return msg;
+                })
               );
             }
           } else if (event.event === "tool_call") {
@@ -326,11 +346,18 @@ export function AgentStreamProvider({
                 name: tc.name,
                 args: tc.args || "",
               };
-              // Add tool call to message immediately
+              // Add tool call to message and content_blocks
               setMessages((prev) =>
                 prev.map((msg) => {
                   if (msg.id === aiMessageId && msg.type === "ai") {
                     const existingToolCalls = (msg as any).tool_calls || [];
+                    const blocks = (msg as any).content_blocks || [];
+                    const toolCallBlock: ContentBlock = {
+                      type: "tool_call",
+                      id: toolCallId,
+                      name: tc.name!,
+                      args: {},
+                    };
                     return {
                       ...msg,
                       tool_calls: [
@@ -341,6 +368,7 @@ export function AgentStreamProvider({
                           args: {},
                         },
                       ],
+                      content_blocks: [...blocks, toolCallBlock],
                     };
                   }
                   return msg;
@@ -357,17 +385,23 @@ export function AgentStreamProvider({
             const resultData = event.data as { result: string };
             const resultId = uuidv4();
 
-            // Add tool result to separate tool_results array
+            // Add tool result to tool_results array and content_blocks
             setMessages((prev) =>
               prev.map((msg) => {
                 if (msg.id === aiMessageId && msg.type === "ai") {
                   const existingResults = (msg as any).tool_results || [];
+                  const blocks = (msg as any).content_blocks || [];
+                  const toolResultBlock: ContentBlock = {
+                    type: "tool_result",
+                    result: resultData.result,
+                  };
                   return {
                     ...msg,
                     tool_results: [
                       ...existingResults,
                       { id: resultId, result: resultData.result },
                     ],
+                    content_blocks: [...blocks, toolResultBlock],
                   };
                 }
                 return msg;
