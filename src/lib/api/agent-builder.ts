@@ -38,6 +38,16 @@ import type {
   ConfigValidationResponse,
   ModelConfigResponse,
   ModelConfigUpdate,
+  // Model Definition types
+  ModelsListResponse,
+  ModelDefinitionInfo,
+  ModelDefinitionCreateRequest,
+  ModelDefinitionCreateResponse,
+  ModelDefinitionUpdateRequest,
+  ModelDefinitionUpdateResponse,
+  ModelDefinitionDeleteResponse,
+  ModelDefinitionUsageInfo,
+  ModelDefinitionValidationResponse,
 } from "@/lib/types/agent-builder";
 
 const API_BASE = process.env.NEXT_PUBLIC_AGENT_BUILDER_API_URL || "http://localhost:8000/api";
@@ -535,5 +545,59 @@ export async function updateAgentModelConfig(
   return fetchApi<ModelConfigResponse>(`/agents/${agentId}/model`, {
     method: "PUT",
     body: JSON.stringify(update),
+  });
+}
+
+// ============================================
+// Model Definition APIs
+// ============================================
+
+export async function getModels(): Promise<ModelsListResponse> {
+  return fetchApi<ModelsListResponse>("/models");
+}
+
+export async function getModel(modelId: string): Promise<ModelDefinitionInfo> {
+  return fetchApi<ModelDefinitionInfo>(`/models/${modelId}`);
+}
+
+export async function createModel(
+  data: ModelDefinitionCreateRequest
+): Promise<ModelDefinitionCreateResponse> {
+  return fetchApi<ModelDefinitionCreateResponse>("/models", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateModel(
+  modelId: string,
+  data: ModelDefinitionUpdateRequest
+): Promise<ModelDefinitionUpdateResponse> {
+  return fetchApi<ModelDefinitionUpdateResponse>(`/models/${modelId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteModel(
+  modelId: string
+): Promise<ModelDefinitionDeleteResponse> {
+  return fetchApi<ModelDefinitionDeleteResponse>(`/models/${modelId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getModelUsage(
+  modelId: string
+): Promise<ModelDefinitionUsageInfo> {
+  return fetchApi<ModelDefinitionUsageInfo>(`/models/${modelId}/usage`);
+}
+
+export async function validateModel(
+  data: ModelDefinitionCreateRequest
+): Promise<ModelDefinitionValidationResponse> {
+  return fetchApi<ModelDefinitionValidationResponse>("/models/validate", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 }

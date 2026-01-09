@@ -15,18 +15,31 @@ import { TemplatesButton } from "./templates-button";
 import { AgentList } from "./agent-list";
 import { SidebarFooter } from "./sidebar-footer";
 import { UserProfile } from "./user-profile";
+import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
   const [sidebarOpen, setSidebarOpen] = useSidebarState();
 
+  const collapsed = !sidebarOpen;
+
   // On desktop (lg+), render the full sidebar content
   // On mobile, render only the Sheet component
   if (isLargeScreen) {
     return (
-      <div className="flex h-screen w-[280px] shrink-0 flex-col bg-white dark:bg-gray-900">
+      <div
+        className={cn(
+          "flex h-screen shrink-0 flex-col bg-white dark:bg-gray-900",
+          collapsed ? "w-16" : "w-[280px]"
+        )}
+      >
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3">
+        <div
+          className={cn(
+            "flex items-center py-3",
+            collapsed ? "justify-center px-2" : "gap-2 px-4"
+          )}
+        >
           <Button
             className="hover:bg-gray-50 dark:hover:bg-gray-800"
             variant="ghost"
@@ -39,35 +52,34 @@ export default function Sidebar() {
               <PanelRightClose className="size-5 text-gray-600 dark:text-gray-400" />
             )}
           </Button>
-          <span className="flex-1 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-            Deep Agent Builder
-          </span>
+          {!collapsed && (
+            <span className="flex-1 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+              Deep Agent Builder
+            </span>
+          )}
         </div>
 
         {/* Create Agent & Templates Buttons */}
-        <div className="px-2 py-1">
-          <CreateAgentButton />
-          <TemplatesButton />
+        <div className={cn("py-1", collapsed ? "px-1" : "px-2")}>
+          <CreateAgentButton collapsed={collapsed} />
+          <TemplatesButton collapsed={collapsed} />
         </div>
 
         {/* Agent List */}
-        <AgentList />
+        <AgentList collapsed={collapsed} />
 
         {/* Footer */}
-        <SidebarFooter />
+        <SidebarFooter collapsed={collapsed} />
 
         {/* User Profile */}
-        <UserProfile />
+        <UserProfile collapsed={collapsed} />
       </div>
     );
   }
 
   // Mobile: render Sheet overlay
   return (
-    <Sheet
-      open={!!sidebarOpen}
-      onOpenChange={(open) => setSidebarOpen(open)}
-    >
+    <Sheet open={!!sidebarOpen} onOpenChange={(open) => setSidebarOpen(open)}>
       <SheetContent side="left" className="flex w-[280px] flex-col p-0">
         <SheetHeader className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <SheetTitle className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-50">

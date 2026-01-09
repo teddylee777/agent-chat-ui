@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, Loader2, AlertCircle } from "lucide-react";
+import { Settings, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,14 +12,20 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   getAgentModelConfig,
   updateAgentModelConfig,
+  getModels,
 } from "@/lib/api/agent-builder";
-import type { ModelConfigResponse, ModelConfigUpdate } from "@/lib/types/agent-builder";
+import type { ModelConfigResponse, ModelConfigUpdate, ModelDefinitionSummary } from "@/lib/types/agent-builder";
 import { toast } from "sonner";
 
 interface ModelSettingsDialogProps {
@@ -26,69 +33,58 @@ interface ModelSettingsDialogProps {
   onSave?: () => void;
 }
 
-// Validation: model_name must contain ":"
-function validateModelName(modelName: string): string | null {
-  if (!modelName || !modelName.trim()) {
-    return "Model name is required";
-  }
-  if (!modelName.includes(":")) {
-    return "Invalid format. Expected 'provider:model' (e.g., anthropic:claude-sonnet-4-5)";
-  }
-  return null;
-}
-
 export function ModelSettingsDialog({ agentId, onSave }: ModelSettingsDialogProps) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [configData, setConfigData] = useState<ModelConfigResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"general" | "custom">("general");
+
+  // Available models from API
+  const [availableModels, setAvailableModels] = useState<ModelDefinitionSummary[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   // Form state
   const [modelName, setModelName] = useState("");
-  const [temperature, setTemperature] = useState<string>("");
-  const [maxTokens, setMaxTokens] = useState<string>("");
-  const [topP, setTopP] = useState<string>("");
-  const [topK, setTopK] = useState<string>("");
-  const [apiKey, setApiKey] = useState<string>("");
-  const [baseUrl, setBaseUrl] = useState<string>("");
 
   // Validation error
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Load config when dialog opens
+  // Load config and available models when dialog opens
   useEffect(() => {
-    async function loadConfig() {
+    async function loadData() {
       if (!isOpen) return;
 
       setIsLoading(true);
+      setIsLoadingModels(true);
       setValidationError(null);
 
       try {
-        const data = await getAgentModelConfig(agentId);
-        setConfigData(data);
+        // Load available models and current config in parallel
+        const [modelsResponse, configResponse] = await Promise.all([
+          getModels(),
+          getAgentModelConfig(agentId),
+        ]);
+
+        setAvailableModels(modelsResponse.models);
+        setConfigData(configResponse);
 
         // Initialize form values
-        setModelName(data.model_name || "");
-        setTemperature(data.temperature?.toString() || "0.1");
-        setMaxTokens(data.max_tokens?.toString() || "");
-        setTopP(data.top_p?.toString() || "");
-        setTopK(data.top_k?.toString() || "");
-        setApiKey(data.api_key || "");
-        setBaseUrl(data.base_url || "");
+        setModelName(configResponse.model_name || "");
       } catch (err) {
-        toast.error("Failed to load model config");
+        toast.error("Failed to load model settings");
         setIsOpen(false);
       } finally {
         setIsLoading(false);
+        setIsLoadingModels(false);
       }
     }
 
-    loadConfig();
+    loadData();
   }, [isOpen, agentId]);
 
-  // Handle model name change with validation
-  const handleModelNameChange = (value: string) => {
+  // Handle model selection from dropdown
+  const handleModelSelect = (value: string) => {
     setModelName(value);
     setValidationError(null);
   };
@@ -96,9 +92,8 @@ export function ModelSettingsDialog({ agentId, onSave }: ModelSettingsDialogProp
   // Handle save
   const handleSave = async () => {
     // Validate model name
-    const error = validateModelName(modelName);
-    if (error) {
-      setValidationError(error);
+    if (!modelName || !modelName.trim()) {
+      setValidationError("Please select a model");
       return;
     }
 
@@ -109,28 +104,6 @@ export function ModelSettingsDialog({ agentId, onSave }: ModelSettingsDialogProp
         model_name: modelName,
       };
 
-      // Only include custom tab fields if in custom mode or if values are set
-      if (activeTab === "custom") {
-        if (temperature) {
-          update.temperature = parseFloat(temperature);
-        }
-        if (maxTokens) {
-          update.max_tokens = parseInt(maxTokens, 10);
-        }
-        if (topP) {
-          update.top_p = parseFloat(topP);
-        }
-        if (topK) {
-          update.top_k = parseInt(topK, 10);
-        }
-        if (apiKey) {
-          update.api_key = apiKey;
-        }
-        if (baseUrl) {
-          update.base_url = baseUrl;
-        }
-      }
-
       await updateAgentModelConfig(agentId, update);
       toast.success("Model settings saved successfully");
       setIsOpen(false);
@@ -140,6 +113,12 @@ export function ModelSettingsDialog({ agentId, onSave }: ModelSettingsDialogProp
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Navigate to Models page
+  const handleManageModels = () => {
+    setIsOpen(false);
+    router.push("/models");
   };
 
   return (
@@ -165,134 +144,52 @@ export function ModelSettingsDialog({ agentId, onSave }: ModelSettingsDialogProp
           </div>
         ) : configData ? (
           <div className="space-y-4">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "general" | "custom")}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-
-              {/* General Tab */}
-              <TabsContent value="general" className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="model-name-general">Model Name</Label>
-                  <Input
-                    id="model-name-general"
-                    value={modelName}
-                    onChange={(e) => handleModelNameChange(e.target.value)}
-                    placeholder="anthropic:claude-sonnet-4-5"
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Format: <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">provider:model</code>
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Example: anthropic:claude-sonnet-4-5
-                  </p>
+            {/* Model Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="model-select">Select Model</Label>
+              {isLoadingModels ? (
+                <div className="flex h-10 items-center justify-center rounded-md border">
+                  <Loader2 className="size-4 animate-spin text-gray-400" />
                 </div>
-              </TabsContent>
-
-              {/* Custom Tab */}
-              <TabsContent value="custom" className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="model-name-custom">Model Name *</Label>
-                  <Input
-                    id="model-name-custom"
-                    value={modelName}
-                    onChange={(e) => handleModelNameChange(e.target.value)}
-                    placeholder="anthropic:claude-sonnet-4-5"
-                    className="font-mono"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="temperature">Temperature</Label>
-                  <Input
-                    id="temperature"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="2"
-                    value={temperature}
-                    onChange={(e) => setTemperature(e.target.value)}
-                    placeholder="0.1"
-                    className="font-mono"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="max-tokens">Max Tokens</Label>
-                  <Input
-                    id="max-tokens"
-                    type="number"
-                    min="1"
-                    value={maxTokens}
-                    onChange={(e) => setMaxTokens(e.target.value)}
-                    placeholder="(optional)"
-                    className="font-mono"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="top-p">Top P</Label>
-                    <Input
-                      id="top-p"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="1"
-                      value={topP}
-                      onChange={(e) => setTopP(e.target.value)}
-                      placeholder="(optional)"
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="top-k">Top K</Label>
-                    <Input
-                      id="top-k"
-                      type="number"
-                      min="1"
-                      value={topK}
-                      onChange={(e) => setTopK(e.target.value)}
-                      placeholder="(optional)"
-                      className="font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Custom Provider Settings */}
-                <div className="border-t pt-4">
-                  <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Custom Provider Settings
-                  </p>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="api-key">API Key</Label>
-                      <Input
-                        id="api-key"
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="(for custom provider)"
+              ) : (
+                <Select value={modelName} onValueChange={handleModelSelect}>
+                  <SelectTrigger className="font-mono">
+                    <SelectValue placeholder="Select a model..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map((model) => (
+                      <SelectItem
+                        key={model.model_id}
+                        value={model.model_name}
                         className="font-mono"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="base-url">Base URL</Label>
-                      <Input
-                        id="base-url"
-                        type="url"
-                        value={baseUrl}
-                        onChange={(e) => setBaseUrl(e.target.value)}
-                        placeholder="https://api.example.com/v1"
-                        className="font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+                      >
+                        {model.model_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {availableModels.length === 0 && !isLoadingModels && (
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  No models available. Add models in the Models settings page.
+                </p>
+              )}
+            </div>
+
+            {/* Manage Models Link */}
+            <div className="pt-2">
+              <Button
+                variant="link"
+                className="h-auto p-0 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                onClick={handleManageModels}
+              >
+                <ExternalLink className="mr-1 size-3" />
+                Manage Models
+              </Button>
+              <p className="mt-1 text-xs text-gray-500">
+                Add or edit model definitions in the Models settings page
+              </p>
+            </div>
 
             {/* Validation Error */}
             {validationError && (

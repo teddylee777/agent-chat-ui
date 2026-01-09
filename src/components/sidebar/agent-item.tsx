@@ -7,16 +7,23 @@ import { cn } from "@/lib/utils";
 import type { AgentSummary } from "@/lib/types/agent-builder";
 import { useRouter } from "next/navigation";
 import { useThreadBackgroundStatus } from "@/hooks/useThreadBackgroundStatus";
+import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 
 interface AgentItemProps {
   agent: AgentSummary;
   isSelected: boolean;
   onClick: () => void;
+  collapsed?: boolean;
 }
 
 type BackgroundState = "idle" | "active" | "completed";
 
-export function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
+export function AgentItem({
+  agent,
+  isSelected,
+  onClick,
+  collapsed,
+}: AgentItemProps) {
   const router = useRouter();
   const { getAllStatuses, refreshFromStorage } = useThreadBackgroundStatus(agent.agent_id);
 
@@ -71,6 +78,32 @@ export function AgentItem({ agent, isSelected, onClick }: AgentItemProps) {
     onClick();
     router.push(`/agent/${agent.agent_id}`);
   };
+
+  if (collapsed) {
+    return (
+      <div className="flex justify-center py-1">
+        <TooltipIconButton
+          tooltip={agent.agent_name}
+          variant="ghost"
+          className={cn(
+            "size-10 p-1",
+            isSelected && "bg-gray-100 dark:bg-gray-800"
+          )}
+          onClick={handleClick}
+        >
+          <div
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-full",
+              logoBgClass[bgState],
+              bgState === "active" && "animate-pulse"
+            )}
+          >
+            <Bot className={cn("size-4", iconClass)} />
+          </div>
+        </TooltipIconButton>
+      </div>
+    );
+  }
 
   return (
     <Button

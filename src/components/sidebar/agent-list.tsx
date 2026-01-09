@@ -6,8 +6,13 @@ import { Button } from "@/components/ui/button";
 import { useAgents } from "@/providers/Agent";
 import { AgentItem } from "./agent-item";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 
-export function AgentList() {
+interface AgentListProps {
+  collapsed?: boolean;
+}
+
+export function AgentList({ collapsed }: AgentListProps) {
   // Force re-render when background status updates
   const [, forceUpdate] = useState(0);
 
@@ -36,6 +41,16 @@ export function AgentList() {
 
   // Loading skeleton
   if (isLoading) {
+    if (collapsed) {
+      return (
+        <div className="flex flex-1 flex-col items-center overflow-hidden min-h-0 py-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="size-8 rounded-full my-1" />
+          ))}
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
         <div className="flex items-center justify-between px-4 py-2">
@@ -69,6 +84,21 @@ export function AgentList() {
 
   // Error state
   if (error) {
+    if (collapsed) {
+      return (
+        <div className="flex flex-1 flex-col items-center overflow-hidden min-h-0 py-2">
+          <TooltipIconButton
+            tooltip="Error - Click to retry"
+            variant="ghost"
+            className="size-10 p-2"
+            onClick={handleRefresh}
+          >
+            <AlertCircle className="size-5 text-red-500" />
+          </TooltipIconButton>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
         <div className="flex items-center justify-between px-4 py-2">
@@ -104,6 +134,21 @@ export function AgentList() {
 
   // Empty state
   if (agents.length === 0) {
+    if (collapsed) {
+      return (
+        <div className="flex flex-1 flex-col items-center overflow-hidden min-h-0 py-2">
+          <TooltipIconButton
+            tooltip="No agents yet"
+            variant="ghost"
+            className="size-10 p-2"
+            onClick={handleRefresh}
+          >
+            <RefreshCw className="size-5 text-gray-400" />
+          </TooltipIconButton>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col overflow-hidden min-h-0">
         <div className="flex items-center justify-between px-4 py-2">
@@ -127,6 +172,24 @@ export function AgentList() {
           <p className="text-xs text-gray-400 dark:text-gray-500">
             Create your first agent to get started
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-1 flex-col items-center overflow-hidden min-h-0 py-2">
+        <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-gray-600">
+          {agents.map((agent) => (
+            <AgentItem
+              key={agent.agent_id}
+              agent={agent}
+              isSelected={selectedAgent?.agent_id === agent.agent_id}
+              onClick={() => setSelectedAgent(agent)}
+              collapsed={collapsed}
+            />
+          ))}
         </div>
       </div>
     );

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Trash2, Check } from "lucide-react";
+import { Trash2, Check, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 import type { Thread, ThreadBackgroundStatus, RunStatus } from "@/lib/types/agent-builder";
 
 interface ThreadItemProps {
@@ -13,6 +14,7 @@ interface ThreadItemProps {
   onClick: () => void;
   onDelete: (threadId: string) => void;
   backgroundStatus?: ThreadBackgroundStatus | null;
+  collapsed?: boolean;
 }
 
 // Status indicator for background runs
@@ -50,6 +52,7 @@ export function ThreadItem({
   onClick,
   onDelete,
   backgroundStatus,
+  collapsed,
 }: ThreadItemProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [deleteConfirmMode, setDeleteConfirmMode] = useState(false);
@@ -72,6 +75,33 @@ export function ThreadItem({
     setIsHovered(false);
     setDeleteConfirmMode(false);
   };
+
+  // Collapsed mode: show only status indicator or message icon with tooltip
+  if (collapsed) {
+    const hasActiveStatus =
+      backgroundStatus &&
+      (backgroundStatus.status === "pending" ||
+        backgroundStatus.status === "running" ||
+        !backgroundStatus.viewed);
+
+    return (
+      <TooltipIconButton
+        tooltip={truncateText(preview)}
+        variant="ghost"
+        className={cn(
+          "size-10 p-1",
+          isSelected && "bg-gray-100 dark:bg-gray-800"
+        )}
+        onClick={onClick}
+      >
+        {hasActiveStatus ? (
+          <StatusIndicator status={backgroundStatus!.status} />
+        ) : (
+          <MessageSquare className="size-5 text-gray-500 dark:text-gray-400" />
+        )}
+      </TooltipIconButton>
+    );
+  }
 
   return (
     <div

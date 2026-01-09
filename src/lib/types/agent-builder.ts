@@ -492,3 +492,102 @@ export interface ModelConfigUpdate {
   api_key?: string;
   base_url?: string;
 }
+
+// ============================================
+// Model Definition Types (for /api/models)
+// ============================================
+
+export type ModelProvider = "anthropic" | "openai" | "google" | "azure" | "bedrock" | "custom";
+
+// Model Definition Summary (for list view)
+export interface ModelDefinitionSummary {
+  model_id: string;
+  model_name: string;
+  model_description: string;
+  provider: ModelProvider;
+}
+
+// Model Default Config
+export interface ModelDefaultConfig {
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+}
+
+// Model Custom Config (for custom provider)
+export interface ModelCustomConfig {
+  base_url: string;
+  api_key_env?: string;
+}
+
+// Model Definition Info (full details)
+export interface ModelDefinitionInfo extends ModelDefinitionSummary {
+  model_path: string;
+  default_config?: ModelDefaultConfig;
+  custom_config?: ModelCustomConfig;
+  required_env: string[];
+  capabilities: string[];
+  tags: string[];
+}
+
+// Model Definition Create Request
+export interface ModelDefinitionCreateRequest {
+  model_name: string;
+  model_description: string;
+  provider: ModelProvider;
+  default_config?: ModelDefaultConfig;
+  custom_config?: ModelCustomConfig;
+  required_env?: string[];
+  capabilities?: string[];
+  tags?: string[];
+}
+
+// Model Definition Update Request
+export interface ModelDefinitionUpdateRequest {
+  model_description?: string;
+  default_config?: ModelDefaultConfig;
+  custom_config?: ModelCustomConfig;
+  required_env?: string[];
+  capabilities?: string[];
+  tags?: string[];
+}
+
+// Model Definition API Responses
+export interface ModelsListResponse {
+  models: ModelDefinitionSummary[];
+  total: number;
+}
+
+export interface ModelDefinitionCreateResponse {
+  success: boolean;
+  model_id: string;
+  model_path: string;
+  message: string;
+}
+
+export interface ModelDefinitionUpdateResponse {
+  success: boolean;
+  model_id: string;
+  model_path: string;
+  message: string;
+}
+
+export interface ModelDefinitionDeleteResponse {
+  success: boolean;
+  model_id: string;
+  message: string;
+}
+
+export interface ModelDefinitionUsageInfo {
+  model_id: string;
+  model_name: string;
+  used_by_agents: string[];
+  is_in_use: boolean;
+}
+
+export interface ModelDefinitionValidationResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}

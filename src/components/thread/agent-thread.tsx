@@ -18,7 +18,6 @@ import {
   PanelRightClose,
   Bot,
   Pencil,
-  History,
   Clock,
   Copy,
   Check,
@@ -444,40 +443,27 @@ function AgentThreadContent({ agent }: AgentThreadContentProps) {
 
       {/* Main Content */}
       <div
-        className={cn(
-          "flex h-full w-full flex-col overflow-hidden",
-          threadSidebarOpen && "ml-[280px]"
-        )}
+        className="flex h-full w-full flex-col overflow-hidden transition-[margin] duration-200"
+        style={{ marginLeft: threadSidebarOpen ? 280 : 64 }}
       >
         {/* Header */}
         <div className="relative z-10 flex h-[65px] items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-900">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              {/* Thread Sidebar Toggle */}
+            {/* Mobile only - Desktop sidebar toggle is always visible in sidebar */}
+            {!isLargeScreen && (
               <Button
                 className="hover:bg-gray-100 dark:hover:bg-gray-800"
                 variant="ghost"
                 size="icon"
-                onClick={() => setThreadSidebarOpen((prev) => !prev)}
-                title={threadSidebarOpen ? "Hide threads" : "Show threads"}
+                onClick={() => setSidebarOpen((p) => !p)}
               >
-                <History className="size-5" />
+                {sidebarOpen ? (
+                  <PanelRightOpen className="size-5" />
+                ) : (
+                  <PanelRightClose className="size-5" />
+                )}
               </Button>
-              {(!sidebarOpen || !isLargeScreen) && (
-                <Button
-                  className="hover:bg-gray-100 dark:hover:bg-gray-800"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSidebarOpen((p) => !p)}
-                >
-                  {sidebarOpen ? (
-                    <PanelRightOpen className="size-5" />
-                  ) : (
-                    <PanelRightClose className="size-5" />
-                  )}
-                </Button>
-              )}
-            </div>
+            )}
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
                 <Bot className="size-5 text-gray-600 dark:text-gray-400" />

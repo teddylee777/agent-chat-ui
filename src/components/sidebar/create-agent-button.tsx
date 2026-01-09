@@ -6,8 +6,13 @@ import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAgents } from "@/providers/Agent";
+import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 
-export function CreateAgentButton() {
+interface CreateAgentButtonProps {
+  collapsed?: boolean;
+}
+
+export function CreateAgentButton({ collapsed }: CreateAgentButtonProps) {
   const pathname = usePathname();
   const { setSelectedAgent } = useAgents();
   const isActive = pathname === "/";
@@ -15,6 +20,25 @@ export function CreateAgentButton() {
   const handleClick = () => {
     setSelectedAgent(null);
   };
+
+  if (collapsed) {
+    return (
+      <div className="flex justify-center py-1">
+        <Link href="/" onClick={handleClick}>
+          <TooltipIconButton
+            tooltip="Create New Agent"
+            variant="ghost"
+            className={cn(
+              "size-10 p-2",
+              isActive && "bg-gray-100 dark:bg-gray-800"
+            )}
+          >
+            <PlusCircle className="size-5 text-gray-600 dark:text-gray-400" />
+          </TooltipIconButton>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <Link href="/" onClick={handleClick}>

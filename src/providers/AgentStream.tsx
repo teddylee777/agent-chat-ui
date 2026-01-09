@@ -12,7 +12,8 @@ import React, {
 import { v4 as uuidv4 } from "uuid";
 import type { Message } from "@langchain/langgraph-sdk";
 import { streamAgentChat, getThreadHistory, createBackgroundRun, createThread } from "@/lib/api/agent-builder";
-import type { BackgroundRunResponse, ContentBlock } from "@/lib/types/agent-builder";
+import type { BackgroundRunResponse, ContentBlock, MessageItem } from "@/lib/types/agent-builder";
+import { reconstructContentBlocks } from "@/lib/message-parser";
 
 // Simplified state type matching StreamProvider
 export type AgentStateType = { messages: Message[] };
@@ -107,7 +108,11 @@ export function AgentStreamProvider({
 
       try {
         const history = await getThreadHistory(agentId, loadThreadId);
-        setMessages(history.messages as Message[]);
+        // Reconstruct content_blocks for each message to ensure consistent rendering
+        const processedMessages = history.messages.map((msg) =>
+          reconstructContentBlocks(msg as MessageItem)
+        );
+        setMessages(processedMessages as Message[]);
         setThreadId(history.thread_id);
       } catch (err) {
         setError(err);
